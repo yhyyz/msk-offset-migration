@@ -1,0 +1,391 @@
+FFFFFFF                                                                  [100%]
+=================================== FAILURES ===================================
+____________ test_backlog_resumes_at_first_unprocessed_by_timestamp ____________
+
+    def test_backlog_resumes_at_first_unprocessed_by_timestamp() -> None:
+        # junk N=5 -> real msgs at offsets 5..14 carrying TS[0..9].
+        client = MockKafkaClient({("target", 0): build_target_records(5)})
+        # Last processed real msg has ts t5 (logical index 5, target offset 10).
+        # Resume = first real msg with ts >= t5+1 = logical index 6 -> target offset 11.
+>       result = translate_timestamp(
+            client, "target", 0, committed_offset=6, last_msg_ts=TS[5]
+        )
+
+tests/test_core.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c019910>
+new_topic = 'target', partition = 0, committed_offset = 6
+last_msg_ts = 1704067205000
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+__________________ test_caught_up_boundary_returns_end_offset __________________
+
+    def test_caught_up_boundary_returns_end_offset() -> None:
+        client = MockKafkaClient({("target", 0): build_target_records(5)})
+        # last_msg_ts is the latest real ts -> no record has ts >= t9+1 -> None.
+        assert client.offsets_for_times("target", 0, TS[9] + 1) is None
+>       result = translate_timestamp(
+            client, "target", 0, committed_offset=14, last_msg_ts=TS[9]
+        )
+
+tests/test_core.py:99: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c03d0a0>
+new_topic = 'target', partition = 0, committed_offset = 14
+last_msg_ts = 1704067209000
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+_________________ test_never_consumed_returns_beginning_offset _________________
+
+    def test_never_consumed_returns_beginning_offset() -> None:
+        client = MockKafkaClient({("target", 0): build_target_records(5)})
+>       result = translate_timestamp(
+            client, "target", 0, committed_offset=0, last_msg_ts=None
+        )
+
+tests/test_core.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c05fd30>
+new_topic = 'target', partition = 0, committed_offset = 0, last_msg_ts = None
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+______________ test_offset_only_db_reverse_lookup_matches_backlog ______________
+
+    def test_offset_only_db_reverse_lookup_matches_backlog() -> None:
+        new_client = MockKafkaClient({("target", 0): build_target_records(5)})
+        # On the OLD cluster, the last-processed msg sits at offset committed_offset-1=5
+        # and carries ts t5; record_ts_at(source, 0, 5) -> t5.
+        old_client = MockKafkaClient({("source", 0): [(i, TS[i]) for i in range(6)]})
+        assert old_client.record_ts_at("source", 0, 5) == TS[5]
+>       result = translate_timestamp(
+            new_client,
+            "target",
+            0,
+            committed_offset=6,
+            last_msg_ts=None,
+            old_client=old_client,
+            old_topic="source",
+        )
+
+tests/test_core.py:123: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c0258e0>
+new_topic = 'target', partition = 0, committed_offset = 6, last_msg_ts = None
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+_________________ test_offset_only_db_missing_timestamp_raises _________________
+
+    def test_offset_only_db_missing_timestamp_raises() -> None:
+        new_client = MockKafkaClient({("target", 0): build_target_records(5)})
+        # OLD cluster has no record at offset 5 -> record_ts_at returns None -> ValueError.
+        old_client = MockKafkaClient({("source", 0): []})
+        with pytest.raises(ValueError):
+>           translate_timestamp(
+                new_client,
+                "target",
+                0,
+                committed_offset=6,
+                last_msg_ts=None,
+                old_client=old_client,
+                old_topic="source",
+            )
+
+tests/test_core.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c0f3e20>
+new_topic = 'target', partition = 0, committed_offset = 6, last_msg_ts = None
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+_______________________ test_per_partition_independence ________________________
+
+    def test_per_partition_independence() -> None:
+        client = MockKafkaClient(
+            {
+                ("target", 0): build_target_records(5),  # junk N=5 -> logical 6 at offset 11
+                ("target", 1): build_target_records(3),  # junk N=3 -> logical 6 at offset 9
+            }
+        )
+        # Same last-processed timestamp (t5) on both partitions; differing junk counts
+        # yield differing target offsets for the same logical resume point.
+>       r0 = translate_timestamp(client, "target", 0, committed_offset=6, last_msg_ts=TS[5])
+
+tests/test_core.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c0255b0>
+new_topic = 'target', partition = 0, committed_offset = 6
+last_msg_ts = 1704067205000
+
+    def translate_timestamp(
+        new_client: "OffsetClient",
+        new_topic: str,
+        partition: int,
+        committed_offset: int,
+        last_msg_ts: Optional[int],
+        *,
+        old_client: "Optional[OffsetClient]" = None,
+        old_topic: Optional[str] = None,
+    ) -> int:
+        """Scheme A. Return the NEW-cluster resume offset for one partition.
+    
+        Algorithm (unified — handles backlog, caught-up boundary, never-consumed,
+        and offset-only DB):
+    
+            1. never-consumed: committed_offset == 0 AND last_msg_ts is None
+               -> return new_client.beginning_offsets(new_topic, partition)
+    
+            2. offset-only DB (last_msg_ts is None, committed_offset > 0):
+               reverse-look-up the timestamp of the last PROCESSED message on the OLD
+               cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
+               committed_offset - 1)
+    
+            3. resume = new_client.offsets_for_times(new_topic, partition,
+                                                     last_msg_ts + 1)
+               The "+1" skips the already-processed last message and lands on the
+               first UNprocessed one. (Boundary reprocess is <=1 record; consumers
+               must dedup by business key — documented in README.)
+    
+            4. caught-up boundary: if offsets_for_times returned None (no record with
+               ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
+               partition). The next replicated/produced record lands there and is read
+               exactly once.
+    
+        Returns the integer offset to write back to the external DB.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:95: NotImplementedError
+_________________ test_translate_endoffsets_returns_end_offset _________________
+
+    def test_translate_endoffsets_returns_end_offset() -> None:
+        client = MockKafkaClient({("target", 0): build_target_records(5)})
+>       assert translate_endoffsets(client, "target", 0) == 15
+
+tests/test_core.py:172: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+new_client = <test_core.MockKafkaClient object at 0x7fb14c53f820>
+new_topic = 'target', partition = 0
+
+    def translate_endoffsets(new_client: "OffsetClient", new_topic: str, partition: int) -> int:
+        """Scheme B. Return the NEW-cluster resume offset = target end offset.
+    
+        Precondition (caller's responsibility, enforced operationally, not here):
+        producers stopped, consumer drained to lag=0, MM2 drained — so the target is
+        frozen at E'. The resume point is then simply the target end offset; the next
+        post-cutover record lands at E' and is consumed with no gap and no re-read.
+        """
+>       raise NotImplementedError
+E       NotImplementedError
+
+offset_migration/core.py:106: NotImplementedError
+=========================== short test summary info ============================
+FAILED tests/test_core.py::test_backlog_resumes_at_first_unprocessed_by_timestamp
+FAILED tests/test_core.py::test_caught_up_boundary_returns_end_offset - NotIm...
+FAILED tests/test_core.py::test_never_consumed_returns_beginning_offset - Not...
+FAILED tests/test_core.py::test_offset_only_db_reverse_lookup_matches_backlog
+FAILED tests/test_core.py::test_offset_only_db_missing_timestamp_raises - Not...
+FAILED tests/test_core.py::test_per_partition_independence - NotImplementedError
+FAILED tests/test_core.py::test_translate_endoffsets_returns_end_offset - Not...
+7 failed in 0.08s
