@@ -282,6 +282,7 @@
     <span class="chip"><span class="k">复制方向</span><span class="v">单向 · 老 → 新</span></span>
     <span class="chip"><span class="k">offset 存储</span><span class="v">外部数据库</span></span>
     <span class="chip"><span class="k">切换方式</span><span class="v">消费者自行 seek</span></span>
+    <span class="chip"><span class="k">验证</span><span class="v">真机 11/11 · 单元 10/10</span></span>
   </div>
 </header>
 
@@ -399,7 +400,7 @@
     <li>生产者切换后,等 MM2 把老集群<b>最后的尾部</b>复制完(因生产已停老集群,几秒即追平),然后<b>停掉该 topic 的 MM2</b>(从复制列表移除),避免新写入与滞后副本交错。</li>
     <li><b>跑 timestamp 翻译脚本:</b>对该 topic 每个分区,取 DB 里记录的"最后处理完那条"的时间戳 → 在新集群 <code>offsetsForTimes(ts)</code> → 得新 offset → 覆盖写回 DB。</li>
     <li><b>切消费者</b>到新集群:照常「读 DB offset → seek」,从翻译后的位置继续消费 backlog,再平滑过渡到新生产的数据。</li>
-    <li>消费端按<b>业务主键幂等去重</b>,吸收边界处可能重复的一两条。</li>
+    <li>resume 用 <code>offsets_for_times(ts)</code>(<b>非 ts+1</b>)落在第一条 ts≥最后处理时间戳的消息,即最后处理那条本身——<b>重处理(同时间戳那一组),绝不跳过</b>未处理消息;消费端按<b>业务主键幂等去重</b>吸收这点重复。</li>
   </ol>
 
   <div class="callout note">
@@ -556,12 +557,54 @@
     <tr><th>需要消费者排空</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不需要,可带 backlog 切</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>必须 lag=0</span></td></tr>
     <tr><th>脚本复杂度</th><td class="no"><span class="verdict"><span class="vi">✕</span>高(seek+poll 取时间戳、offsetsForTimes、边界处理)</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>极低(一行 endOffsets)</span></td></tr>
     <tr><th>是否依赖冻结窗口 / 切换顺序</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不依赖,order-independent</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>强依赖(抓 E′ 必须在切生产者前)</span></td></tr>
-    <tr><th>重复消费</th><td class="no"><span class="verdict"><span class="vi">✕</span>边界处可能重复一两条 → 需幂等去重</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>无</span></td></tr>
+    <tr><th>重复消费</th><td class="no"><span class="verdict"><span class="vi">✕</span>边界重处理同时间戳组(绝不跳过)→ 需幂等去重</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>无</span></td></tr>
     <tr><th>改消费者代码</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不改</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>不改</span></td></tr>
     <tr><th>适合场景</th><td>生产者多、不能长停;backlog 大</td><td>能接受短停机;backlog 小、求简单稳妥</td></tr>
   </tbody>
 </table>
 </div>
+
+<!-- ===================== 实测验证结果 ===================== -->
+<h2>实测验证结果 · 真实 Amazon MSK 端到端验证</h2>
+<p>在 us-east-1 的<b>真实 Amazon MSK</b> 集群(2× <code>kafka.t3.small</code>,Kafka 3.6.0,PLAINTEXT)上,用<b>真实 MirrorMaker 2</b> 把 <code>orders</code> 复制到 <code>src.orders</code>(DefaultReplicationPolicy),端到端验证两个脚本。为让测试有意义,复制前给目标 topic 预埋 junk(p0=5、p1=3,旧时间戳),<b>强制目标 offset 与源错位</b>(<code>src.orders</code> p0 末尾=15、p1=13)——这样"直接照搬 offset"的错误实现会失败。<b>时间戳保留</b>已验证:源 <code>orders</code> p0@offset 0 的 k0 → 目标 <code>src.orders</code> p0@offset 5,时间戳完全相同。</p>
+
+<div class="callout tip">
+  <span class="ct">✓ 单元测试 10/10 + 真机场景 11/11 全通过</span>
+  单元覆盖:backlog、追平 reprocess、target-behind <code>None→endOffsets</code>、从未消费、offset-only 反查、分区独立、<b>重复时间戳跳过安全</b>、缺时间戳报错、方案 B。
+</div>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>场景</th><th>真机验证结果</th></tr></thead>
+  <tbody>
+    <tr><th>S1 方案A backlog (committed@6)</th><td>→ <code>src.orders</code> @<b>10</b> = <b>k5</b>(落在最后处理那条,重处理安全)</td></tr>
+    <tr><th>S1b 方案A 反查 (DB 仅 offset)</th><td>从老集群实时反查时间戳 → 同样 @<b>10</b></td></tr>
+    <tr><th>S2 方案A 追平 (k9 在目标)</th><td>→ @<b>12</b> = <b>k9</b>(重处理);新 k10 经 MM2 复制 → 在 @13 被读到(不跳过)</td></tr>
+    <tr><th>S2b 方案A target-behind</th><td><code>offsets_for_times</code> 返回 None → 回退到实时 <code>endOffsets</code></td></tr>
+    <tr><th>S3 方案B endOffsets 快照</th><td>产新数据前快照=<b>15</b>;3 条 cutover 后消息精确在 15–17 读到;offset 14 仍是旧 k9</td></tr>
+    <tr><th>S4 从未消费 (offset 0,无 ts)</th><td>→ beginning offset <b>0</b></td></tr>
+    <tr><th>S-dup 重复时间戳跳过安全</th><td>两条消息同一时间戳;resume 落在<b>第一条</b> → 未处理孪生消息<b>不被跳过</b>(<code>ts+1</code> 会跳过它)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout note">
+  <span class="ct">评审发现并修复的真 bug</span>
+  最初用 <code>offsets_for_times(last_msg_ts + 1)</code>,在"<b>同一毫秒多条消息</b>"时会<b>静默跳过未处理消息(丢数据)</b>。已改为 <code>offsets_for_times(last_msg_ts)</code>——落在第一条 ts≥last_msg_ts 的消息,<b>重处理(去重兜底)而非跳过</b>;单测 + 真机都验证了跳过安全(场景 S-dup)。
+</div>
+
+<!-- ===================== 注意事项与要求 ===================== -->
+<h2>注意事项与要求</h2>
+<ul class="k">
+  <li class="hl"><b>目标 topic 必须是 <code>CreateTime</code>(不能 <code>LogAppendTime</code>)</b>:否则目标 broker 会用"复制时刻"覆盖 MM2 带来的原始时间戳,方案 A 的时间戳锚点失效。源 topic 哪种都行(只决定时间戳的含义/单调性);MSK/Kafka 默认即 CreateTime。</li>
+  <li><b>消费者必须按业务主键幂等去重</b>:方案 A 在边界会重处理"最后处理那条 / 同时间戳那一组",靠去重兜底(本就是 at-least-once 语义)。</li>
+  <li><b>生产时间乱序的影响</b>:正常 cutover(最后处理的"锚点"消息仍在目标 retention 内)<b>不会丢数据</b>,最多多重复几条;只有"锚点已被 retention/compaction 删除 + 时间戳乱序"这个极端组合才可能跳过。缓解:保证 retention 覆盖迁移窗口 + 去重,或用方案 B(与顺序完全无关)。</li>
+  <li><b>MM2 配置</b>:同集群 src==dst 演示时必须关掉 <code>emit.heartbeats</code>(否则 DefaultReplicationPolicy 会把 heartbeats 递归复制成 <code>src.src.…heartbeats</code> 级联,撑爆 topic 名);真实跨集群迁移无此问题。要目标 topic 同名用 <code>IdentityReplicationPolicy</code>。</li>
+  <li><b>DB 里的老 offset 必须在 cutover 时被覆盖</b>:MM2 不保留 offset 值,老 offset 在新集群无意义。</li>
+  <li><b>认证</b>:验证走 PLAINTEXT(9092);生产 IAM 用 <code>--security-protocol SASL_SSL</code> + OAUTHBEARER(<code>aws-msk-iam-sasl-signer</code>)。</li>
+  <li><b>为什么用 MM2 而非 MSK Replicator</b>:Replicator 要求源集群开 IAM access control(强制 broker 间加密=开,而该设置创建后<b>不可改</b>);加密关着且不可改时,只能用 MM2。</li>
+  <li><b>脚本名</b>:方案 A = <code>migrate_by_timestamp.py</code>;方案 B = <code>migrate_by_endoffsets.py</code>。两者都不改消费者代码。</li>
+</ul>
 
 <!-- ===================== 通用注意 ===================== -->
 <h2>两方案通用的注意事项</h2>
@@ -575,7 +618,8 @@
 </ul>
 
 <footer>
-  MSK Standard → Express 迁移方案说明 · MirrorMaker 2 单向复制 + 外部 DB offset 切换
+  MSK Standard → Express 迁移方案说明 · MirrorMaker 2 单向复制 + 外部 DB offset 切换<br>
+  脚本 migrate_by_timestamp.py / migrate_by_endoffsets.py · 真实 Amazon MSK 验证(单元 10/10 · 真机 11/11)
 </footer>
 
 </div>
