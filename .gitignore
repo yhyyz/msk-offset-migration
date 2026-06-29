@@ -1,6 +1,6 @@
 .cluster/
 *.db
-evidence/surface/*.log
+evidence/
 __pycache__/
 *.pyc
 .pytest_cache/

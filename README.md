@@ -62,7 +62,7 @@ offset_migration/
 tests/test_core.py   mocked RED→GREEN unit tests (no infra)
 harness/             seeder, consumer_sim, verifier, MM2 config, bringup + scenario runners
 scripts/             provision_msk.sh, teardown.sh
-evidence/            red/ green/ (unit) + surface/ (live logs)
+evidence/            red/ green/ (unit) + surface/ (live logs) — gitignored, generated at runtime
 ```
 
 ## OffsetDB schema
@@ -102,11 +102,11 @@ test non-trivial, the target was **pre-seeded with junk** (older timestamps) bef
 p1) — this **forces the target offsets to diverge** from the source (`src.orders` p0 end=15, p1 end=13), so a
 naive "copy the offset" implementation would fail.
 
-**Smoke** ([`evidence/surface/mm2_smoke.log`](evidence/surface/mm2_smoke.log)): replication counts matched
+**Smoke** (`evidence/surface/mm2_smoke.log`, generated locally by the harness — gitignored): replication counts matched
 (p0=15, p1=13), no self-replication loop (`src.src.*` absent), and **timestamps were preserved** (source
 `k0` at offset 0 → target offset 5 with identical timestamp).
 
-**Scenarios** ([`evidence/surface/scenarios.log`](evidence/surface/scenarios.log)) — **11/11 PASS**:
+**Scenarios** (`evidence/surface/scenarios.log`, generated locally) — **11/11 PASS**:
 
 | Scenario | Result |
 |---|---|
@@ -118,9 +118,7 @@ naive "copy the offset" implementation would fail.
 | S4 never-consumed (offset 0, no ts) | → **beginning offset 0** |
 | S-dup **duplicate-timestamp skip-safety** | two records share a timestamp; resume lands on the **first** → the unprocessed twin is **NOT skipped** (`ts+1` would skip it) |
 
-Unit tests (mocked, no infra): RED → GREEN in
-[`evidence/red/pytest_red.txt`](evidence/red/pytest_red.txt) /
-[`evidence/green/pytest_green.txt`](evidence/green/pytest_green.txt) — **9 cases**: backlog, caught-up
+Unit tests (mocked, no infra): RED → GREEN (logs `evidence/red/pytest_red.txt` / `evidence/green/pytest_green.txt`, generated locally) — **9 cases**: backlog, caught-up
 (reprocess), target-behind None→end, never-consumed, offset-only reverse-lookup, per-partition
 independence, **duplicate-timestamp skip-safety**, missing-ts error, Scheme B.
 

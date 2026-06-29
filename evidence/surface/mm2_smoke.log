@@ -1,6 +1,0 @@
-=== MM2 smoke (corrected re-run) 2026-06-29T03:02:47Z ===
-replication counts: src.orders p0=20 p1=14
-no src.src cascade: 8 topics
-ts-preservation:
-  source orders p0@0 : {"offset": 0, "key": "k0", "value": "v0", "timestamp": 1782702073301}
-  target src.orders p0@5 (replicated k0): {"offset": 5, "key": "k0", "value": "v0", "timestamp": 1782702073301}
