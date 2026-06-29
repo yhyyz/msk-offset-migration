@@ -56,7 +56,7 @@ cluster, otherwise `E'` is a moving target and records between snapshot and cuto
 offset_migration/
   core.py            pure offset-translation logic (unit-tested, client-agnostic)
   kafka_adapter.py   live kafka-python OffsetClient (PLAINTEXT default; IAM documented)
-  offsetdb.py        SQLite external offset store
+  offsetdb.py        SQLite external offset store (keyed by cluster_id, topic, partition)
   migrate_by_timestamp.py / migrate_by_endoffsets.py   CLIs
   config.py          pinned constants for the validation cluster
 tests/test_core.py   mocked RED→GREEN unit tests (no infra)
@@ -66,27 +66,34 @@ evidence/            red/ green/ (unit) + surface/ (live logs) — gitignored, g
 ```
 
 ## OffsetDB schema
-SQLite, one row per `(topic, partition)`:
+SQLite, one row per `(cluster_id, topic, partition)`:
 | column | meaning |
 |---|---|
+| `cluster_id` | which cluster this offset is for (e.g. `old` / `new`). Lets old & new offsets coexist under the **same topic name**, so the consumer never changes the topic it queries — at cutover it only flips its `cluster_id` (alongside `bootstrap.servers`). Migration is re-runnable & rollbackable (old rows are kept). |
 | `committed_offset` | next offset the consumer would read (Kafka commit semantics) |
 | `last_msg_ts` | timestamp (ms) of the last **processed** message (offset `committed_offset-1`); `NULL` ⇒ Scheme A reverse-looks it up from the OLD cluster |
 
 ## Usage
 
 ```bash
-# Scheme A — timestamp mapping (rewrites DB offsets old→new by timestamp)
+# Scheme A — timestamp mapping (writes NEW-cluster rows by timestamp; OLD rows kept)
+# With IdentityReplicationPolicy the topic name is the SAME on both clusters;
+# cluster_id (old/new) is what distinguishes the rows.
 python3 -m offset_migration.migrate_by_timestamp \
   --old-bootstrap OLD:9092 --new-bootstrap NEW:9092 \
-  --old-topic orders --new-topic src.orders \
+  --old-cluster old --new-cluster new \
+  --old-topic orders --new-topic orders \
   --db offsets.db --partitions 2
 
 # Scheme B — endOffsets snapshot (run inside the frozen cutover window)
 python3 -m offset_migration.migrate_by_endoffsets \
-  --new-bootstrap NEW:9092 --new-topic src.orders \
+  --new-bootstrap NEW:9092 --new-cluster new --new-topic orders \
   --db offsets.db --partitions 2
 ```
 `--partitions` accepts a COUNT (`2` → `[0,1]`) or a comma list (`0,1,3`).
+
+**Cutover** = the consumer flips its `cluster_id` (`old` → `new`) alongside `bootstrap.servers`;
+its topic name and code stay unchanged. Old rows remain for rollback.
 
 ### MSK IAM (production)
 Validation ran over **PLAINTEXT (9092)** because auth is irrelevant to offset-translation correctness.

@@ -102,6 +102,7 @@ def main(argv: "list[str] | None" = None) -> int:
     parser.add_argument("--bootstrap", default=None,
                         help="bootstrap servers; default reads .cluster/bootstrap.txt")
     parser.add_argument("--db", required=True, help="path to the OffsetDB sqlite file")
+    parser.add_argument("--cluster", default="old", help="cluster_id to write under (default 'old')")
     parser.add_argument("--topic", default=SOURCE_TOPIC,
                         help=f"topic the consumer reads (default {SOURCE_TOPIC})")
     parser.add_argument("--partition", type=int, required=True, help="partition to record")
@@ -145,8 +146,8 @@ def main(argv: "list[str] | None" = None) -> int:
 
     db = OffsetDB(args.db)
     try:
-        db.upsert(args.topic, args.partition, committed_offset, last_msg_ts)
-        stored = db.get(args.topic, args.partition)
+        db.upsert(args.cluster, args.topic, args.partition, committed_offset, last_msg_ts)
+        stored = db.get(args.cluster, args.topic, args.partition)
     finally:
         db.close()
 

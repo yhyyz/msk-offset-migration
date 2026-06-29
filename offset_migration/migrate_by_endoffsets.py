@@ -80,6 +80,8 @@ def main(argv: "list[str] | None" = None) -> int:
     parser.add_argument("--new-topic", default=TARGET_TOPIC,
                         help=f"NEW (MM2 target) topic (default {TARGET_TOPIC})")
     parser.add_argument("--db", required=True, help="path to the OffsetDB sqlite file")
+    parser.add_argument("--new-cluster", required=True,
+                        help="cluster_id to write for the NEW cluster (e.g. 'new')")
     parser.add_argument("--partitions", default=str(PARTITIONS),
                         help=("partitions to migrate: an integer COUNT -> range "
                               f"(default {PARTITIONS} -> 0..{PARTITIONS - 1}), or a "
@@ -108,8 +110,8 @@ def main(argv: "list[str] | None" = None) -> int:
     try:
         for p in partitions:
             new_off = core.translate_endoffsets(new_client, args.new_topic, p)
-            db.upsert(args.new_topic, p, new_off)
-            print(f"p{p}: new({args.new_topic}) endOffset -> @{new_off}")
+            db.upsert(args.new_cluster, args.new_topic, p, new_off)
+            print(f"p{p}: {args.new_cluster}/{args.new_topic} endOffset -> @{new_off}")
     finally:
         db.close()
         new_client.close()

@@ -654,40 +654,41 @@
 <h2>代码与数据样例 · 仓库源码</h2>
 
 <h3><span class="tick">数据</span>OffsetDB 存储样例(SQLite · 每分区一行)</h3>
-<p>消费者把「下一条要读的 offset(<code>committed_offset</code>)」+「最后处理那条消息的时间戳(<code>last_msg_ts</code>)」存进外部 DB。迁移脚本<b>只改写这张表里的 offset</b>,消费者代码不动。下面是验证里的真实数据(对应实测 S1/S2):</p>
+<p>消费者把「下一条要读的 offset(<code>committed_offset</code>)」+「最后处理那条消息的时间戳(<code>last_msg_ts</code>)」存进外部 DB,并用 <code>cluster_id</code> 区分新老集群。迁移脚本<b>只新增「新集群」的行(老行保留,可回滚)</b>,消费者代码不动。下面是 schema 与样例(offset 值取自实测 S1/S2):</p>
 <div class="table-scroll">
 <table>
-  <thead><tr><th>阶段</th><th>topic</th><th>partition</th><th>committed_offset</th><th>last_msg_ts</th></tr></thead>
+  <thead><tr><th>cluster_id</th><th>topic</th><th>partition</th><th>committed_offset</th><th>last_msg_ts</th></tr></thead>
   <tbody>
-    <tr><th>迁移前(老集群)</th><td><code>orders</code></td><td>0</td><td>6</td><td><code>1782698739797</code></td></tr>
-    <tr><th>迁移前(老集群)</th><td><code>orders</code></td><td>1</td><td>10</td><td><code>1782698743797</code></td></tr>
-    <tr><th>方案A 改写后(新集群)</th><td><code>src.orders</code></td><td>0</td><td><b>10</b></td><td><code>1782698739797</code></td></tr>
-    <tr><th>方案A 改写后(新集群)</th><td><code>src.orders</code></td><td>1</td><td><b>12</b></td><td><code>1782698743797</code></td></tr>
+    <tr><th><code>old</code></th><td><code>orders</code></td><td>0</td><td>6</td><td><code>1782698739797</code></td></tr>
+    <tr><th><code>old</code></th><td><code>orders</code></td><td>1</td><td>10</td><td><code>1782698743797</code></td></tr>
+    <tr><th><code>new</code></th><td><code>orders</code></td><td>0</td><td><b>10</b></td><td><code>1782698739797</code></td></tr>
+    <tr><th><code>new</code></th><td><code>orders</code></td><td>1</td><td><b>12</b></td><td><code>1782698743797</code></td></tr>
   </tbody>
 </table>
 </div>
-<p><code>migrate_by_timestamp.py</code> 用 <code>last_msg_ts</code> 在新集群 <code>offsetsForTimes</code> 反查:p0 的 <code>6 → 10</code>、p1 的 <code>10 → 12</code> —— 正是实测 S1 / S2 的结果。建表语句:<code>offsets(topic, partition, committed_offset, last_msg_ts)</code>,主键 <code>(topic, partition)</code>。</p>
+<p>用 <code>cluster_id</code> 区分,<b>topic 名两边相同</b>(<code>IdentityReplicationPolicy</code>),老/新行共存。<code>migrate_by_timestamp.py</code> 用 <code>last_msg_ts</code> 在新集群 <code>offsetsForTimes</code> 反查、写入 <code>new</code> 行:p0 <code>6 → 10</code>、p1 <code>10 → 12</code>(正是实测 S1 / S2)。建表:<code>offsets(cluster_id, topic, partition, committed_offset, last_msg_ts)</code>,主键 <code>(cluster_id, topic, partition)</code>。<b>cutover</b> = 消费者把 <code>cluster_id</code> 从 <code>old</code> 翻到 <code>new</code>(连同 bootstrap),topic 名不变。</p>
 
 <h3><span class="tick">消费</span>消费者代码样例(迁移前后完全不变)</h3>
 <pre class="code"><span class="cm"># 消费者:迁移前后代码一行都不用改 —— 永远是「读 DB offset → seek」</span>
-<span class="cm"># 迁移脚本只改写 DB 里的 offset;切到新集群只是换 bootstrap + topic 名</span>
+<span class="cm"># cutover 时只把 CLUSTER_ID 从 'old' 翻到 'new'(连同 bootstrap),topic 名和代码都不变</span>
 from kafka import KafkaConsumer, TopicPartition
 from offset_migration.offsetdb import OffsetDB
 
+CLUSTER_ID = config.CLUSTER_ID            <span class="cm"># 'old' / 'new',来自配置(与 bootstrap 一起翻)</span>
 db = OffsetDB(<span class="st">"offsets.db"</span>)
 consumer = KafkaConsumer(bootstrap_servers=BOOTSTRAP,
                          enable_auto_commit=False, group_id=None)
 tp = TopicPartition(TOPIC, PARTITION)
 consumer.assign([tp])
 
-row = db.get(TOPIC, PARTITION)            <span class="cm"># -> (committed_offset, last_msg_ts)</span>
-consumer.seek(tp, row[0] if row else 0)   <span class="cm"># 从 DB 记录的位置继续</span>
+row = db.get(CLUSTER_ID, TOPIC, PARTITION)   <span class="cm"># -> (committed_offset, last_msg_ts)</span>
+consumer.seek(tp, row[0] if row else 0)      <span class="cm"># 从 DB 记录的位置继续</span>
 
 for rec in consumer:
     process(rec)                          <span class="cm"># 业务处理:按业务主键幂等去重</span>
     <span class="cm"># 提交:存「下一条要读的 offset」+「这条消息的时间戳」</span>
-    db.upsert(TOPIC, PARTITION, rec.offset + 1, rec.timestamp)</pre>
-<p>关键点:消费者<b>始终</b>存 <code>last_msg_ts</code>(这条消息的时间戳),方案A 切换时才能靠它反查新集群 offset;<code>process()</code> 必须按业务主键<b>幂等去重</b>,吸收边界重处理。</p>
+    db.upsert(CLUSTER_ID, TOPIC, PARTITION, rec.offset + 1, rec.timestamp)</pre>
+<p>关键点:消费者<b>始终</b>存 <code>last_msg_ts</code>(方案A 切换靠它反查新集群 offset);cutover 只翻 <code>CLUSTER_ID</code> 配置,<b>topic 名与代码不变</b>;<code>process()</code> 必须按业务主键<b>幂等去重</b>,吸收边界重处理。</p>
 
 <h3><span class="tick">源码</span>迁移脚本与核心实现(GitHub)</h3>
 <ul class="filelist">

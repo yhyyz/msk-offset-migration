@@ -88,6 +88,10 @@ def main(argv: "list[str] | None" = None) -> int:
     parser.add_argument("--new-topic", default=TARGET_TOPIC,
                         help=f"NEW (MM2 target) topic (default {TARGET_TOPIC})")
     parser.add_argument("--db", required=True, help="path to the OffsetDB sqlite file")
+    parser.add_argument("--old-cluster", required=True,
+                        help="cluster_id of the OLD cluster's rows in the OffsetDB (e.g. 'old')")
+    parser.add_argument("--new-cluster", required=True,
+                        help="cluster_id to write for the NEW cluster (e.g. 'new'); old rows are kept")
     parser.add_argument("--partitions", default=str(PARTITIONS),
                         help=("partitions to migrate: an integer COUNT -> range "
                               f"(default {PARTITIONS} -> 0..{PARTITIONS - 1}), or a "
@@ -115,9 +119,9 @@ def main(argv: "list[str] | None" = None) -> int:
     db = OffsetDB(args.db)
     try:
         for p in partitions:
-            row = db.get(args.old_topic, p)
+            row = db.get(args.old_cluster, args.old_topic, p)
             if row is None:
-                print(f"[scheme_a] WARNING: no OffsetDB row for {args.old_topic} p{p}; skipping")
+                print(f"[scheme_a] WARNING: no OffsetDB row for {args.old_cluster}/{args.old_topic} p{p}; skipping")
                 continue
             committed_offset, last_ts = row
             new_off = core.translate_timestamp(
@@ -129,11 +133,9 @@ def main(argv: "list[str] | None" = None) -> int:
                 old_client=old_client,
                 old_topic=args.old_topic,
             )
-            # Write the resume point under the NEW topic so the consumer (now
-            # pointed at the NEW cluster) picks up from the NEW-topic offset.
-            db.upsert(args.new_topic, p, new_off, last_ts)
-            print(f"p{p}: old({args.old_topic})@{committed_offset} ts={last_ts} "
-                  f"-> new({args.new_topic})@{new_off}")
+            db.upsert(args.new_cluster, args.new_topic, p, new_off, last_ts)
+            print(f"p{p}: {args.old_cluster}/{args.old_topic}@{committed_offset} ts={last_ts} "
+                  f"-> {args.new_cluster}/{args.new_topic}@{new_off}")
     finally:
         db.close()
         new_client.close()

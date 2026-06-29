@@ -64,18 +64,20 @@ def check(name, cond, detail):
 
 def sim(db, topic, partition, *flags):
     return run([PY, os.path.join(_REPO, "harness", "consumer_sim.py"),
-                "--bootstrap", BS, "--db", db, "--topic", topic,
+                "--bootstrap", BS, "--db", db, "--cluster", "old", "--topic", topic,
                 "--partition", str(partition), *flags])
 
 
 def scheme_a(db):
     return run([PY, "-m", "offset_migration.migrate_by_timestamp",
-                "--bootstrap", BS, "--db", db, "--partitions", "2"])
+                "--bootstrap", BS, "--db", db, "--partitions", "2",
+                "--old-cluster", "old", "--new-cluster", "new"])
 
 
 def scheme_b(db):
     return run([PY, "-m", "offset_migration.migrate_by_endoffsets",
-                "--bootstrap", BS, "--db", db, "--partitions", "2"])
+                "--bootstrap", BS, "--db", db, "--partitions", "2",
+                "--new-cluster", "new"])
 
 
 def rm(db):
@@ -88,7 +90,7 @@ print("\n=== S1: Scheme A BACKLOG (orders p0 committed=6) -> src.orders @10 == k
 db = f"{TMP}/s1.db"; rm(db)
 sim(db, "orders", 0, "--upto", "6")
 scheme_a(db)
-d = OffsetDB(db); got = d.get("src.orders", 0); d.close()
+d = OffsetDB(db); got = d.get("new", "src.orders", 0); d.close()
 rec = V.read_at(BS, "src.orders", 0, 10)
 check("S1 new_off == 10", got and got[0] == 10, f"DB(src.orders,p0)={got}")
 check("S1 record@10 is k5 (reprocess-safe, no skip)", rec and rec["key"] == "k5", f"record={rec}")
@@ -98,7 +100,7 @@ print("\n=== S1b: Scheme A REVERSE-LOOKUP (offset-only DB, no ts) -> same @10 ==
 db = f"{TMP}/s1b.db"; rm(db)
 sim(db, "orders", 0, "--upto", "6", "--no-timestamp")
 scheme_a(db)
-d = OffsetDB(db); got = d.get("src.orders", 0); d.close()
+d = OffsetDB(db); got = d.get("new", "src.orders", 0); d.close()
 check("S1b reverse-lookup new_off == 10", got and got[0] == 10,
       f"DB(src.orders,p0)={got} (ts re-read live from OLD cluster offset 5)")
 
@@ -107,7 +109,7 @@ print("\n=== S2: Scheme A CAUGHT-UP (orders p1 drained) -> @12 == k9 (reprocess)
 db = f"{TMP}/s2.db"; rm(db)
 sim(db, "orders", 1, "--caughtup")
 scheme_a(db)
-d = OffsetDB(db); got = d.get("src.orders", 1); d.close()
+d = OffsetDB(db); got = d.get("new", "src.orders", 1); d.close()
 rec12 = V.read_at(BS, "src.orders", 1, 12)
 check("S2 new_off == 12 (reprocess last k9, no skip)",
       got and got[0] == 12 and rec12 and rec12["key"] == "k9",
@@ -135,7 +137,7 @@ print("\n=== S3: Scheme B endOffsets SNAPSHOT (src.orders p0) then post-cutover 
 db = f"{TMP}/s3.db"; rm(db)
 end_before = V.end_offset(BS, "src.orders", 0)
 scheme_b(db)
-d = OffsetDB(db); snap = d.get("src.orders", 0); d.close()
+d = OffsetDB(db); snap = d.get("new", "src.orders", 0); d.close()
 check("S3 snapshot == frozen end (15)", snap and snap[0] == end_before == 15,
       f"DB(src.orders,p0)={snap}, live end_before={end_before}")
 now = int(time.time() * 1000)
@@ -157,7 +159,7 @@ print("\n=== S4: Scheme A NEVER-CONSUMED (offset 0, no ts) -> beginning offset =
 db = f"{TMP}/s4.db"; rm(db)
 sim(db, "orders", 0, "--upto", "0")
 scheme_a(db)
-d = OffsetDB(db); got = d.get("src.orders", 0); d.close()
+d = OffsetDB(db); got = d.get("new", "src.orders", 0); d.close()
 begin = V.begin_offset(BS, "src.orders", 0)
 check("S4 never-consumed -> beginning offset", got and got[0] == begin,
       f"DB(src.orders,p0)={got}, begin_offset={begin}")
