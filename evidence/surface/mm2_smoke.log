@@ -1,0 +1,56 @@
+02:05:30 bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092
+02:05:30 --- create topics (RF=2, 2 partitions) ---
+Created topic orders.
+WARNING: Due to limitations in metric names, topics with a period ('.') or underscore ('_') could collide. To avoid issues it is best to use either, but not both.
+Created topic src.orders.
+02:05:34 --- seed (junk to src.orders, real to orders) ---
+[seeder] bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092
+[seeder] source_topic=orders target_topic=src.orders partitions=2
+[seeder] pre-seeded 5 junk record(s) into src.orders p0 (ts=1577836800000)
+[seeder] pre-seeded 3 junk record(s) into src.orders p1 (ts=1577836800000)
+[seeder] real-record base timestamp_ms=1782698734797
+[seeder] === summary ===
+[seeder]   orders p0: produced=10
+[seeder]   orders p1: produced=10
+[seeder]   src.orders p0: produced=5
+[seeder]   src.orders p1: produced=3
+[seeder]   orders p0: real ts range [1782698734797, 1782698743797] (span=9000 ms over 10 records)
+[seeder]   orders p1: real ts range [1782698734797, 1782698743797] (span=9000 ms over 10 records)
+[seeder] done.
+02:05:34 --- launch MirrorMaker2 ---
+Rendered /home/ec2-user/work/aws/customer/idaily/harness/mm2.properties (bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092)
+MM2 started pid=2535525
+  log=/home/ec2-user/work/aws/customer/idaily/evidence/surface/mm2.log
+  pidfile=/home/ec2-user/work/aws/customer/idaily/.cluster/mm2.pid
+02:05:34 --- wait for replication (target p0=15, p1=13) ---
+02:05:38   attempt 1: src.orders endOffsets p0=5 p1=3
+02:05:52   attempt 2: src.orders endOffsets p0=15 p1=13
+02:05:52 REPLICATION COMPLETE
+02:05:52 --- topics after MM2 (must NOT contain src.src.orders) ---
+__amazon_msk_canary
+__consumer_offsets
+heartbeats
+mm2-configs.dst.internal
+mm2-configs.src.internal
+mm2-offset-syncs.dst.internal
+mm2-offsets.dst.internal
+mm2-offsets.src.internal
+mm2-status.dst.internal
+mm2-status.src.internal
+orders
+src.checkpoints.internal
+src.heartbeats
+src.orders
+src.src.heartbeats
+02:05:54 bringup done
+=== TIMESTAMP PRESERVATION CHECK ===
+-- source orders p0 @0 (should be k0) --
+{"offset": 0, "key": "k0", "value": "v0", "timestamp": 1782698734797}
+-- target src.orders p0 @5 (replicated k0, after 5 junk) --
+{"offset": 5, "key": "k0", "value": "v0", "timestamp": 1782698734797}
+-- source orders p1 @9 (k9) --
+{"offset": 9, "key": "k9", "value": "v9", "timestamp": 1782698743797}
+-- target src.orders p1 @12 (replicated k9, after 3 junk) --
+{"offset": 12, "key": "k9", "value": "v9", "timestamp": 1782698743797}
+-- target src.orders p0 @0 (junk, ts=2020=1577836800000) --
+{"offset": 0, "key": "junk-0-0", "value": "junk", "timestamp": 1577836800000}
