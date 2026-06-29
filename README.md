@@ -23,7 +23,7 @@ scripts only rewrite the DB offset to the correct NEW-cluster value.
 | Producer downtime | **Basically none** (brief reconnect) | **Stops** for the whole drain window |
 | Needs consumer drained? | No — can carry backlog | Yes — `lag=0` |
 | Depends on cutover ordering? | No (order-independent) | Yes (snapshot **before** producers switch) |
-| Reprocessing | ≤1 record at the boundary → **dedup by business key** | None |
+| Reprocessing | last-processed msg / same-ts group → **dedup by business key** (never skips) | None |
 | Complexity | Higher (timestamp reverse-lookup) | One line (`endOffsets`) |
 | Use when | Producers can't stop / backlog is large | Short stop is OK / want the simplest, exact path |
 
@@ -31,11 +31,14 @@ scripts only rewrite the DB offset to the correct NEW-cluster value.
 ```
 1. never-consumed (committed_offset==0 & no ts)  -> beginning_offsets(new_topic)
 2. offset-only DB (ts is None, offset>0)         -> ts = old.record_ts_at(old_topic, offset-1)
-3. resume = new.offsets_for_times(new_topic, ts + 1)   # +1 skips the last processed msg
-4. caught-up (offsets_for_times == None)         -> resume = end_offsets(new_topic)
+3. resume = new.offsets_for_times(new_topic, ts)   # first record with ts >= last; NOT ts+1
+4. target-behind (offsets_for_times == None)     -> resume = end_offsets(new_topic)
 ```
-The `+1` lands the consumer on the first **unprocessed** message; the boundary may re-deliver at most
-one record, so **consumers must be idempotent / dedup by business key**.
+Step 3 uses `ts` (the last-processed timestamp), **not** `ts+1`: resume lands on the first record at
+or after that timestamp, so the consumer **reprocesses** the last-processed message / same-timestamp
+group and **never skips** an unprocessed record. (With `ts+1`, records sharing the boundary
+millisecond would be silently skipped — data loss dedup cannot recover.) Consumers therefore **must
+dedup by business key**; reprocessing is bounded by the size of the same-timestamp group.
 
 ### Scheme B (per partition)
 Precondition (operational): producers stopped + consumer drained + MM2 drained → target frozen at `E'`.
@@ -89,28 +92,31 @@ For a real IAM-secured MSK cluster, pass `--security-protocol SASL_SSL` and wire
 
 A real **Amazon MSK** cluster (2× `kafka.t3.small`, Kafka 3.6.0, PLAINTEXT, us-east-1) was provisioned and
 **real MirrorMaker 2** replicated `orders` → `src.orders` on it (`DefaultReplicationPolicy`). To make the
-test non-trivial, the target was **pre-seeded with junk** (ts=2020) before MM2 ran (5 in p0, 3 in p1) — this
-**forces the target offsets to diverge** from the source (`src.orders` p0 end=15, p1 end=13), so a naive
-"copy the offset" implementation would fail.
+test non-trivial, the target was **pre-seeded with junk** (older timestamps) before MM2 ran (5 in p0, 3 in
+p1) — this **forces the target offsets to diverge** from the source (`src.orders` p0 end=15, p1 end=13), so a
+naive "copy the offset" implementation would fail.
 
 **Smoke** ([`evidence/surface/mm2_smoke.log`](evidence/surface/mm2_smoke.log)): replication counts matched
-(p0=15, p1=13), no self-replication loop (`src.src.orders` absent), and **timestamps were preserved**
-(source `k0` ts=1782698734797 → target offset 5 same ts; `k9` → target offset 12 same ts).
+(p0=15, p1=13), no self-replication loop (`src.src.*` absent), and **timestamps were preserved** (source
+`k0` at offset 0 → target offset 5 with identical timestamp).
 
-**Scenarios** ([`evidence/surface/scenarios.log`](evidence/surface/scenarios.log)) — **9/9 PASS**:
+**Scenarios** ([`evidence/surface/scenarios.log`](evidence/surface/scenarios.log)) — **11/11 PASS**:
 
 | Scenario | Result |
 |---|---|
-| S1 Scheme A backlog (committed@6) | → `src.orders`@**11**, record there is **k6** (first unprocessed) |
-| S1b Scheme A reverse-lookup (offset-only DB) | ts re-read live from OLD cluster → also @**11** |
-| S2 Scheme A caught-up boundary (drained) | `offsets_for_times`→None on a real caught-up partition → `endOffsets`=**13**; new `k10` produced & MM2-replicated → consumer @13 reads exactly **k10** |
+| S1 Scheme A backlog (committed@6) | → `src.orders`@**10** = **k5** (resume at last-processed; reprocess-safe) |
+| S1b Scheme A reverse-lookup (offset-only DB) | ts re-read live from OLD cluster → also @**10** |
+| S2 Scheme A caught-up (drained, k9 present) | → @**12** = **k9** (reprocess last); new `k10` produced & MM2-replicated → read at @13 (no skip) |
+| S2b Scheme A target-behind | `offsets_for_times`→None on a real partition → falls back to live `endOffsets` |
 | S3 Scheme B snapshot | captured end=**15** before producing; 3 post-cutover records read exactly at 15–17; offset 14 still = last old **k9** |
 | S4 never-consumed (offset 0, no ts) | → **beginning offset 0** |
+| S-dup **duplicate-timestamp skip-safety** | two records share a timestamp; resume lands on the **first** → the unprocessed twin is **NOT skipped** (`ts+1` would skip it) |
 
 Unit tests (mocked, no infra): RED → GREEN in
 [`evidence/red/pytest_red.txt`](evidence/red/pytest_red.txt) /
-[`evidence/green/pytest_green.txt`](evidence/green/pytest_green.txt) — 7 cases covering backlog, boundary,
-never-consumed, offset-only reverse-lookup, per-partition independence, Scheme B.
+[`evidence/green/pytest_green.txt`](evidence/green/pytest_green.txt) — **9 cases**: backlog, caught-up
+(reprocess), target-behind None→end, never-consumed, offset-only reverse-lookup, per-partition
+independence, **duplicate-timestamp skip-safety**, missing-ts error, Scheme B.
 
 ## Reproduce
 ```bash

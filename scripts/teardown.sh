@@ -62,6 +62,7 @@ fi
 # Best-effort: kill any lingering MM2 process by command match.
 log "Best-effort pkill -f connect-mirror-maker..."
 pkill -f connect-mirror-maker 2>/dev/null || true
+pkill -9 -f 'org.apache.kafka.connect.mirror.MirrorMaker' 2>/dev/null || true
 log "Step 1 complete."
 
 # =============================================================================
