@@ -19,7 +19,7 @@ scripts only rewrite the DB offset to the correct NEW-cluster value.
 
 | | **Scheme A — timestamp mapping** | **Scheme B — endOffsets snapshot** |
 |---|---|---|
-| File | [`migrate_scheme_a.py`](offset_migration/migrate_scheme_a.py) | [`migrate_scheme_b.py`](offset_migration/migrate_scheme_b.py) |
+| File | [`migrate_by_timestamp.py`](offset_migration/migrate_by_timestamp.py) | [`migrate_by_endoffsets.py`](offset_migration/migrate_by_endoffsets.py) |
 | Producer downtime | **Basically none** (brief reconnect) | **Stops** for the whole drain window |
 | Needs consumer drained? | No — can carry backlog | Yes — `lag=0` |
 | Depends on cutover ordering? | No (order-independent) | Yes (snapshot **before** producers switch) |
@@ -57,7 +57,7 @@ offset_migration/
   core.py            pure offset-translation logic (unit-tested, client-agnostic)
   kafka_adapter.py   live kafka-python OffsetClient (PLAINTEXT default; IAM documented)
   offsetdb.py        SQLite external offset store
-  migrate_scheme_a.py / migrate_scheme_b.py   CLIs
+  migrate_by_timestamp.py / migrate_by_endoffsets.py   CLIs
   config.py          pinned constants for the validation cluster
 tests/test_core.py   mocked RED→GREEN unit tests (no infra)
 harness/             seeder, consumer_sim, verifier, MM2 config, bringup + scenario runners
@@ -76,13 +76,13 @@ SQLite, one row per `(topic, partition)`:
 
 ```bash
 # Scheme A — timestamp mapping (rewrites DB offsets old→new by timestamp)
-python3 -m offset_migration.migrate_scheme_a \
+python3 -m offset_migration.migrate_by_timestamp \
   --old-bootstrap OLD:9092 --new-bootstrap NEW:9092 \
   --old-topic orders --new-topic src.orders \
   --db offsets.db --partitions 2
 
 # Scheme B — endOffsets snapshot (run inside the frozen cutover window)
-python3 -m offset_migration.migrate_scheme_b \
+python3 -m offset_migration.migrate_by_endoffsets \
   --new-bootstrap NEW:9092 --new-topic src.orders \
   --db offsets.db --partitions 2
 ```

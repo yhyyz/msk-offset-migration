@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSK Standard → Express 迁移:消费者 offset 切换两方案</title>
+<style>
+  :root{
+    /* ---- 中性色:冷调近白,非米色 ---- */
+    --bg:#eef1f6;
+    --bg-2:#e6eaf2;
+    --surface:#ffffff;
+    --surface-2:#f8fafc;
+    --surface-3:#f2f5fa;
+    --ink:#141925;
+    --ink-2:#39414f;
+    --muted:#5c6577;
+    --muted-2:#828ca0;
+    --line:#e3e7f0;
+    --line-2:#d3d9e6;
+
+    /* ---- 方案配色 ---- */
+    --a:#2f5de0;   --a-bg:#eaf0fe;   --a-ink:#2348c0;
+    --b:#a85d0a;   --b-bg:#fbeed7;   --b-ink:#8f4e08;
+
+    /* ---- 泳道语义色 ---- */
+    --green:#0f8a52;  --green-bg:#e3f4ea;
+    --red:#d2403a;    --red-bg:#fbe7e5;
+    --blue:#2f6fed;   --blue-bg:#e8effd;
+    --orange:#bd6f0a; --orange-bg:#fbeed7;
+    --purple:#6b3fcc; --purple-bg:#ece3fb;
+
+    /* ---- 表格判定 ---- */
+    --ok:#0a7544; --no:#c4332c;
+
+    --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Heiti SC","Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:"SF Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+
+    --shadow-sm:0 1px 2px rgba(20,30,60,.05), 0 1px 1px rgba(20,30,60,.03);
+    --shadow-md:0 6px 22px -8px rgba(24,38,74,.14), 0 2px 6px rgba(24,38,74,.05);
+
+    /* z-scale */
+    --z-sticky:100;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; color:var(--ink);
+    background:
+      radial-gradient(1200px 520px at 78% -8%, #ffffff 0%, rgba(255,255,255,0) 60%),
+      linear-gradient(180deg, #f4f6fa 0%, var(--bg) 38%, var(--bg) 100%);
+    background-attachment:fixed;
+    font-family:var(--sans);
+    line-height:1.78; font-size:15.5px;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:clamp(28px,5vw,60px) clamp(18px,4vw,32px) 96px}
+
+  code{
+    background:var(--surface-3); color:#243049;
+    padding:1.5px 6px; border-radius:6px; font-size:.86em;
+    font-family:var(--mono); border:1px solid var(--line);
+    overflow-wrap:anywhere; word-break:break-word;
+  }
+
+  /* ============ Header ============ */
+  header.doc{margin-bottom:30px}
+  .kicker{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:11.5px; font-weight:600;
+    letter-spacing:.04em; color:var(--a-ink);
+    background:var(--a-bg); border:1px solid #d3e0fb;
+    padding:5px 11px; border-radius:7px; margin-bottom:18px;
+  }
+  .kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--a)}
+  h1{
+    font-size:clamp(24px,4.4vw,35px); line-height:1.24; margin:0 0 14px;
+    letter-spacing:-.012em; font-weight:800; text-wrap:balance; color:var(--ink);
+  }
+  h1 .arrow{color:var(--muted-2); font-weight:600; padding:0 .12em}
+  .sub{
+    color:var(--ink-2); font-size:clamp(14px,1.6vw,16px); margin:0 0 22px;
+    max-width:74ch; text-wrap:pretty;
+  }
+  .meta{display:flex; flex-wrap:wrap; gap:8px}
+  .chip{
+    display:inline-flex; align-items:baseline; gap:7px;
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:9px; padding:7px 12px; box-shadow:var(--shadow-sm);
+  }
+  .chip .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--muted-2); text-transform:uppercase}
+  .chip .v{font-size:13px; font-weight:600; color:var(--ink-2)}
+
+  /* ============ Lead / 核心矛盾 ============ */
+  .lead{
+    background:var(--surface); border:1px solid var(--line); border-radius:18px;
+    padding:clamp(20px,3vw,30px); box-shadow:var(--shadow-md); margin:8px 0 14px;
+    position:relative; overflow:hidden;
+  }
+  .lead::before{content:""; position:absolute; inset:0 0 auto 0; height:3px;
+    background:linear-gradient(90deg, var(--a) 0%, var(--a) 50%, var(--b) 50%, var(--b) 100%)}
+  .lead-h{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+  .lead-h .tt{font-size:13px; font-family:var(--mono); letter-spacing:.02em; color:var(--muted)}
+  .tension{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    font-size:clamp(17px,2.4vw,21px); font-weight:800; letter-spacing:-.01em; margin:2px 0 20px;
+  }
+  .tension .lhs{color:var(--a)} .tension .rhs{color:var(--b)}
+  .tension .vs{font-family:var(--mono); font-weight:700; color:var(--muted-2); font-size:.8em}
+
+  .scheme-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  .scheme{
+    border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px;
+    background:var(--surface-2); position:relative;
+  }
+  .scheme.a{border-top:3px solid var(--a)}
+  .scheme.b{border-top:3px solid var(--b)}
+  .scheme-top{display:flex; align-items:center; gap:11px; margin-bottom:12px}
+  .badge{
+    flex:0 0 auto; width:34px; height:34px; border-radius:10px; color:#fff;
+    font-weight:800; font-size:17px; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono);
+  }
+  .badge.a{background:var(--a)} .badge.b{background:var(--b)}
+  .scheme-top .nm{font-weight:800; font-size:15.5px; line-height:1.25}
+  .scheme-top .nm small{display:block; font-weight:600; font-size:12.5px; color:var(--muted)}
+  .meters{display:grid; gap:9px; margin:6px 0 12px}
+  .meter-row{display:grid; grid-template-columns:78px 1fr auto; align-items:center; gap:10px; font-size:12.5px}
+  .meter-row .lbl{color:var(--muted); font-weight:600}
+  .meter{display:inline-flex; gap:4px}
+  .meter i{width:100%; height:7px; border-radius:3px; background:var(--line-2); flex:1}
+  .scheme.a .meter i.on{background:var(--a)} .scheme.b .meter i.on{background:var(--b)}
+  .meter{display:flex; width:100%}
+  .meter-row .val{font-weight:700; font-size:12px; white-space:nowrap}
+  .scheme.a .val{color:var(--a-ink)} .scheme.b .val{color:var(--b-ink)}
+  .scheme .essence{font-size:13.5px; color:var(--ink-2); margin:0; line-height:1.7}
+  .scheme .essence b{color:var(--ink)}
+  .lead-note{
+    margin:16px 0 0; padding:13px 16px; border-radius:11px;
+    background:var(--surface-3); border:1px solid var(--line);
+    font-size:13.5px; color:var(--ink-2);
+  }
+  .lead-note b{color:var(--ink)}
+
+  /* ============ Section headings ============ */
+  h2{
+    font-size:clamp(19px,2.8vw,24px); font-weight:800; letter-spacing:-.01em;
+    margin:54px 0 18px; padding-left:15px; position:relative; line-height:1.3; text-wrap:balance;
+  }
+  h2::before{content:""; position:absolute; left:0; top:.16em; bottom:.16em; width:5px; border-radius:3px; background:var(--ink-2)}
+  h2.sa::before{background:var(--a)} h2.sb::before{background:var(--b)}
+  h2 .hbadge{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:27px; height:27px; border-radius:8px; color:#fff; font-family:var(--mono);
+    font-weight:800; font-size:15px; margin-right:10px; vertical-align:-4px;
+  }
+  h2.sa .hbadge{background:var(--a)} h2.sb .hbadge{background:var(--b)}
+  h3{font-size:16px; font-weight:700; margin:24px 0 10px; color:var(--ink); letter-spacing:-.005em}
+  h3 .tick{color:var(--muted-2); font-family:var(--mono); font-size:12px; margin-right:7px; font-weight:600}
+  p{margin:11px 0}
+
+  /* ============ Scheme cards ============ */
+  .card{
+    background:var(--surface); border:1px solid var(--line); border-radius:18px;
+    padding:6px clamp(18px,3vw,30px) 26px; box-shadow:var(--shadow-md); margin:18px 0;
+  }
+  .applic{
+    display:flex; gap:10px; align-items:flex-start;
+    margin:20px 0 6px; padding:11px 15px; border-radius:11px; font-size:13.5px; font-weight:600;
+  }
+  .applic.a{background:var(--a-bg); color:var(--a-ink); border:1px solid #d3e0fb}
+  .applic.b{background:var(--b-bg); color:var(--b-ink); border:1px solid #f0dcb5}
+  .applic .ic{font-family:var(--mono); font-weight:800; opacity:.65}
+
+  /* ============ Steps ============ */
+  ol.steps{counter-reset:s; list-style:none; padding:0; margin:14px 0 4px}
+  ol.steps li{
+    position:relative; padding:13px 16px 13px 52px; margin:9px 0;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:12px;
+    font-size:14.5px; line-height:1.72; transition:border-color .15s, box-shadow .15s;
+  }
+  ol.steps li:hover{box-shadow:var(--shadow-sm)}
+  ol.steps li::before{
+    counter-increment:s; content:counter(s); position:absolute; left:13px; top:12px;
+    width:27px; height:27px; border-radius:9px; color:#fff; font-size:13.5px; font-weight:800;
+    font-family:var(--mono); display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-sm);
+  }
+  .card.a ol.steps li::before{background:var(--a)}
+  .card.b ol.steps li::before{background:var(--b)}
+  .card.a ol.steps li:hover{border-color:#c2d3fb}
+  .card.b ol.steps li:hover{border-color:#eccf9a}
+  ol.steps li b{font-weight:700; color:var(--ink)}
+
+  /* ============ Figures / SVG ============ */
+  .fig{
+    margin:24px 0; background:var(--surface); border:1px solid var(--line);
+    border-radius:16px; padding:18px clamp(14px,2.4vw,22px) 14px; box-shadow:var(--shadow-sm);
+  }
+  .legend{
+    display:flex; gap:9px 18px; flex-wrap:wrap; justify-content:center;
+    margin:2px 0 14px; font-size:12.5px; color:var(--muted);
+    padding-bottom:13px; border-bottom:1px dashed var(--line-2);
+  }
+  .legend span{display:inline-flex; align-items:center; gap:7px; white-space:nowrap}
+  .sw{width:13px; height:13px; border-radius:4px; display:inline-block; flex:0 0 auto}
+  svg{display:block; width:100%; height:auto; shape-rendering:geometricPrecision}
+  .fig figcaption{color:var(--muted); font-size:12.5px; text-align:center; margin-top:12px; line-height:1.6; text-wrap:pretty}
+
+  /* ============ Table ============ */
+  .table-scroll{overflow-x:auto; margin:18px 0; border-radius:14px; border:1px solid var(--line); box-shadow:var(--shadow-sm)}
+  table{border-collapse:collapse; width:100%; min-width:640px; font-size:14px; background:var(--surface)}
+  thead th{
+    background:var(--surface-3); font-weight:700; font-size:13.5px; color:var(--ink);
+    position:sticky; top:0;
+  }
+  th,td{padding:13px 16px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top}
+  tbody th{font-weight:700; color:var(--ink-2); white-space:nowrap; background:var(--surface-2); width:1%}
+  th:nth-child(2),td:nth-child(2){border-left:1px solid var(--line)}
+  thead th:nth-child(2){border-top:3px solid var(--a)}
+  thead th:nth-child(3){border-top:3px solid var(--b)}
+  td .verdict{display:inline-flex; align-items:baseline; gap:7px; font-weight:600}
+  td.ok .verdict{color:var(--ok)} td.no .verdict{color:var(--no)}
+  td .vi{font-family:var(--mono); font-weight:800; flex:0 0 auto}
+  tbody tr:last-child td, tbody tr:last-child th{border-bottom:none}
+  tbody tr:nth-child(even) td, tbody tr:nth-child(even) th{background:color-mix(in srgb, var(--surface-2) 55%, transparent)}
+
+  /* ============ Callouts ============ */
+  .callout{border-radius:13px; padding:14px 17px 14px 16px; margin:16px 0; font-size:14px; line-height:1.74; border:1px solid}
+  .callout .ct{display:block; font-weight:800; margin-bottom:3px; font-size:13px; letter-spacing:.02em}
+  .callout.warn{background:var(--red-bg); border-color:#f1c5c2}
+  .callout.warn, .callout.warn .ct{color:#9c2b25}
+  .callout.tip{background:var(--green-bg); border-color:#bfe6cd}
+  .callout.tip, .callout.tip .ct{color:#0c6b41}
+  .callout.note{background:var(--blue-bg); border-color:#c9dcfb}
+  .callout.note, .callout.note .ct{color:#1f4fb8}
+  .callout b{font-weight:700}
+  .callout code{background:rgba(255,255,255,.6)}
+
+  /* ============ Notes list ============ */
+  ul.k{margin:14px 0; padding:0; list-style:none}
+  ul.k li{
+    position:relative; margin:10px 0; padding:13px 16px 13px 44px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    font-size:14.5px; line-height:1.72; box-shadow:var(--shadow-sm);
+  }
+  ul.k li::before{
+    content:""; position:absolute; left:17px; top:21px; width:9px; height:9px;
+    border-radius:3px; background:var(--ink-2); transform:rotate(45deg);
+  }
+  ul.k li b{color:var(--ink)}
+  ul.k li.hl{border-color:#c9dcfb; background:linear-gradient(0deg, var(--blue-bg) 0%, var(--surface) 60%)}
+  ul.k li.hl::before{background:var(--blue)}
+
+  footer{
+    margin-top:56px; color:var(--muted); font-size:12.5px; text-align:center;
+    border-top:1px solid var(--line); padding-top:22px; font-family:var(--mono); letter-spacing:.02em;
+  }
+
+  /* ============ Responsive ============ */
+  @media (max-width:680px){
+    .scheme-grid{grid-template-columns:1fr}
+    .meter-row{grid-template-columns:72px 1fr auto}
+    h2{margin-top:44px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ Header ============ -->
+<header class="doc">
+  <span class="kicker"><span class="dot"></span>消费者 offset 切换 · 迁移运行手册</span>
+  <h1>MSK Standard <span class="arrow">→</span> Express 迁移<br>消费者 offset 切换的两种方案</h1>
+  <p class="sub">MSK 加密配置无法满足 Replicator 要求,改用 <b>MirrorMaker 2</b>(单向 老→新)迁移;消费者的 offset 存在外部数据库,自己 <code>seek</code>。MM2 不保留 offset 值,因此 DB 里的老 offset 在新集群上无效,必须在切换时重新定位。</p>
+  <div class="meta">
+    <span class="chip"><span class="k">迁移工具</span><span class="v">MirrorMaker 2</span></span>
+    <span class="chip"><span class="k">复制方向</span><span class="v">单向 · 老 → 新</span></span>
+    <span class="chip"><span class="k">offset 存储</span><span class="v">外部数据库</span></span>
+    <span class="chip"><span class="k">切换方式</span><span class="v">消费者自行 seek</span></span>
+  </div>
+</header>
+
+<!-- ============ Lead / 核心矛盾 ============ -->
+<div class="lead">
+  <div class="lead-h"><span class="tt">核心矛盾 · 二选一的权衡</span></div>
+  <div class="tension"><span class="lhs">生产者停机时间</span><span class="vs">⇄</span><span class="rhs">实现复杂度</span></div>
+
+  <div class="scheme-grid">
+    <!-- A summary -->
+    <div class="scheme a">
+      <div class="scheme-top">
+        <span class="badge a">A</span>
+        <span class="nm">timestamp 映射脚本<small>生产者基本不停(切换瞬间暂停几秒)</small></span>
+      </div>
+      <div class="meters">
+        <div class="meter-row"><span class="lbl">生产者停机</span>
+          <span class="meter"><i class="on"></i><i></i><i></i><i></i><i></i></span>
+          <span class="val">基本不停</span></div>
+        <div class="meter-row"><span class="lbl">实现复杂度</span>
+          <span class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span>
+          <span class="val">高</span></div>
+      </div>
+      <p class="essence">消费者按<b>时间戳</b>独立定位,不依赖冻结边界,可带 backlog 切。代价:脚本复杂 + 消费者需<b>幂等去重</b>。</p>
+    </div>
+
+    <!-- B summary -->
+    <div class="scheme b">
+      <div class="scheme-top">
+        <span class="badge b">B</span>
+        <span class="nm">endOffsets 快照<small>必须停生产者整个排空窗口</small></span>
+      </div>
+      <div class="meters">
+        <div class="meter-row"><span class="lbl">生产者停机</span>
+          <span class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+          <span class="val">整个窗口</span></div>
+        <div class="meter-row"><span class="lbl">实现复杂度</span>
+          <span class="meter"><i class="on"></i><i></i><i></i><i></i><i></i></span>
+          <span class="val">极低</span></div>
+      </div>
+      <p class="essence">靠"复制历史末尾 <b>E′</b>"这个干净边界定位,脚本极简、<b>无重复消费</b>。代价:生产者真停机(整段排空)。</p>
+    </div>
+  </div>
+
+  <p class="lead-note">两种方案都<b>不改消费者代码</b>(消费者永远是「读 DB offset → seek」),区别只在于<b>由谁、在何时、用什么逻辑</b>把正确的新集群 offset 写进 DB。</p>
+</div>
+
+<!-- ===================== 方案 A ===================== -->
+<h2 class="sa"><span class="hbadge">A</span>timestamp 映射脚本(生产者基本不停)</h2>
+
+<div class="card a">
+  <div class="applic a"><span class="ic">适用</span><span>生产者不能长时间停 / 消费者 backlog 大、不想等排空。</span></div>
+
+  <h3><span class="tick">原理</span>用时间戳反查新 offset</h3>
+  <p>MM2 复制时<b>保留原始消息时间戳</b>。脚本用消费者在老集群"最后处理完那条消息"的时间戳,在新集群上 <code>offsetsForTimes(ts)</code> 反查出对应的新 offset,写回 DB。因为定位靠时间戳,<b>不依赖新集群末尾是否冻结</b>——即使生产者已经切过去、新集群在持续写入,也能算出正确的 resume 点。</p>
+
+  <figure class="fig">
+    <div class="legend">
+      <span><i class="sw" style="background:var(--green)"></i>生产者写入</span>
+      <span><i class="sw" style="background:var(--red)"></i>生产者暂停</span>
+      <span><i class="sw" style="background:var(--blue)"></i>MM2 复制</span>
+      <span><i class="sw" style="background:var(--orange)"></i>消费者读取</span>
+      <span><i class="sw" style="background:var(--purple)"></i>脚本 / DB 写入</span>
+    </div>
+    <svg viewBox="0 0 960 336" role="img" aria-label="方案A时间线泳道图">
+      <!-- time axis -->
+      <line x1="148" y1="46" x2="930" y2="46" stroke="#c2cadd" stroke-width="1.4"/>
+      <polygon points="930,41.5 944,46 930,50.5" fill="#c2cadd"/>
+      <text x="906" y="37" font-size="12" fill="#828ca0" font-family="ui-monospace,Menlo,Consolas,monospace">时间 →</text>
+      <!-- cutover marker -->
+      <line x1="452" y1="40" x2="452" y2="300" stroke="#d2403a" stroke-width="1.4" stroke-dasharray="5 4"/>
+      <text x="148" y="37" font-size="11.5" fill="#828ca0">cutover 时刻</text>
+      <text x="452" y="62" font-size="11.5" fill="#d2403a" text-anchor="middle" font-weight="700">瞬间切换</text>
+
+      <!-- lane labels -->
+      <text x="20" y="92"  font-size="13" fill="#39414f" font-weight="700">生产者</text>
+      <text x="20" y="150" font-size="13" fill="#39414f" font-weight="700">MM2 复制</text>
+      <text x="20" y="208" font-size="13" fill="#39414f" font-weight="700">消费者</text>
+      <text x="20" y="252" font-size="13" fill="#39414f" font-weight="700">脚本 / DB</text>
+
+      <!-- producer lane (y 70..104) -->
+      <rect x="148" y="70" width="290" height="34" rx="8" fill="#e3f4ea" stroke="#0f8a52" stroke-width="1.3"/>
+      <text x="293" y="92" font-size="13" fill="#0f8a52" text-anchor="middle" font-weight="700">写老集群</text>
+      <rect x="440" y="70" width="24" height="34" rx="4" fill="#fbe7e5" stroke="#d2403a" stroke-width="1.3"/>
+      <rect x="466" y="70" width="458" height="34" rx="8" fill="#e3f4ea" stroke="#0f8a52" stroke-width="1.3"/>
+      <text x="695" y="92" font-size="13" fill="#0f8a52" text-anchor="middle" font-weight="700">写新集群</text>
+      <text x="452" y="126" font-size="10.5" fill="#d2403a" text-anchor="middle" font-weight="600">暂停~秒</text>
+
+      <!-- mm2 lane (y 128..162) -->
+      <rect x="148" y="128" width="372" height="34" rx="8" fill="#e8effd" stroke="#2f6fed" stroke-width="1.3"/>
+      <text x="334" y="150" font-size="13" fill="#2f6fed" text-anchor="middle" font-weight="700">持续复制 老 → 新</text>
+      <text x="532" y="150" font-size="12" fill="#2f6fed" font-weight="600">→ 排空尾部后停 MM2</text>
+
+      <!-- consumer lane (y 186..220) -->
+      <rect x="148" y="186" width="424" height="34" rx="8" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1.3"/>
+      <text x="360" y="208" font-size="13" fill="#bd6f0a" text-anchor="middle" font-weight="700">读老集群(可带 backlog)</text>
+      <rect x="580" y="186" width="344" height="34" rx="8" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1.3"/>
+      <text x="752" y="208" font-size="12.5" fill="#bd6f0a" text-anchor="middle" font-weight="700">读新集群(继续 backlog→新数据)</text>
+
+      <!-- script lane (y ~246) -->
+      <circle cx="580" cy="246" r="9" fill="#6b3fcc"/>
+      <text x="597" y="250" font-size="12.5" fill="#6b3fcc" font-weight="700">timestamp 翻译 → 写新 offset 到 DB</text>
+
+      <!-- annotation band -->
+      <rect x="148" y="280" width="776" height="34" rx="9" fill="#ece3fb" stroke="#d8caf5" stroke-width="1.1"/>
+      <text x="536" y="301" font-size="12" fill="#5a35b0" text-anchor="middle">生产者停机 ≈ 几秒(只是重连/排空在途);消费者切换不阻塞生产者,可独立、带 backlog 进行</text>
+    </svg>
+    <figcaption>图 1 · 方案 A 时间线:生产者仅短暂暂停,消费者切换与生产者完全解耦</figcaption>
+  </figure>
+
+  <h3><span class="tick">步骤</span>切换流程(每个 topic 独立执行)</h3>
+  <ol class="steps">
+    <li><b>前置:</b>保持 MM2 低延迟(lag 接近 0),让新集群随时几乎追平。新 topic 用 <code>IdentityReplicationPolicy</code> 保持<b>同名</b>。</li>
+    <li><b>生产者短暂排空在途请求</b>(几秒),切 <code>bootstrap.servers</code> + 认证到新集群 <code>:9098 / IAM</code>,立即恢复写入新集群。</li>
+    <li>生产者切换后,等 MM2 把老集群<b>最后的尾部</b>复制完(因生产已停老集群,几秒即追平),然后<b>停掉该 topic 的 MM2</b>(从复制列表移除),避免新写入与滞后副本交错。</li>
+    <li><b>跑 timestamp 翻译脚本:</b>对该 topic 每个分区,取 DB 里记录的"最后处理完那条"的时间戳 → 在新集群 <code>offsetsForTimes(ts)</code> → 得新 offset → 覆盖写回 DB。</li>
+    <li><b>切消费者</b>到新集群:照常「读 DB offset → seek」,从翻译后的位置继续消费 backlog,再平滑过渡到新生产的数据。</li>
+    <li>消费端按<b>业务主键幂等去重</b>,吸收边界处可能重复的一两条。</li>
+  </ol>
+
+  <div class="callout note">
+    <span class="ct">为什么生产者能不停</span>
+    消费者 resume 点由"最后处理消息的时间戳"算出,与新集群是否冻结、是否已有新数据<b>无关</b>。所以生产者切换不需要等消费者排空,也不需要冻结窗口。
+  </div>
+  <div class="callout warn">
+    <span class="ct">前提条件</span>
+    ① 新 topic 时间戳类型须为默认 <code>CreateTime</code>(否则时间戳被改写,反查失效);② 消费者必须幂等;③ 老集群在跑脚本时仍在线、消息仍在 retention 内。
+  </div>
+</div>
+
+<!-- ===================== offset 翻译原理 ===================== -->
+<h2>offset 翻译原理 · 两方案差异的本质</h2>
+
+<figure class="fig">
+  <div class="legend">
+    <span><i class="sw" style="background:#9aa6bf"></i>老集群 offset 轴</span>
+    <span><i class="sw" style="background:var(--blue)"></i>新集群 offset 轴</span>
+    <span><i class="sw" style="background:var(--orange)"></i>backlog(未处理)</span>
+    <span><i class="sw" style="background:var(--purple)"></i>已处理点 / timestamp 映射</span>
+  </div>
+  <svg viewBox="0 0 960 272" role="img" aria-label="offset翻译原理单分区示意">
+    <text x="20" y="30" font-size="14" fill="#141925" font-weight="800">单分区 offset 映射</text>
+
+    <!-- old cluster line -->
+    <text x="20" y="97" font-size="13" fill="#39414f" font-weight="700">老集群</text>
+    <line x1="150" y1="92" x2="884" y2="92" stroke="#9aa6bf" stroke-width="2.4"/>
+    <!-- backlog shaded -->
+    <rect x="524" y="82" width="300" height="20" rx="3" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1" stroke-dasharray="4 3"/>
+    <text x="674" y="72" font-size="11.5" fill="#bd6f0a" text-anchor="middle" font-weight="600">backlog(没处理完)</text>
+    <circle cx="150" cy="92" r="4.5" fill="#5b6678"/><text x="150" y="120" font-size="12" fill="#5b6678" text-anchor="middle">0</text>
+    <circle cx="524" cy="92" r="6" fill="#6b3fcc"/><text x="524" y="120" font-size="12" fill="#6b3fcc" text-anchor="middle" font-weight="700">C 已处理到</text>
+    <circle cx="824" cy="92" r="4.5" fill="#5b6678"/><text x="824" y="120" font-size="12" fill="#5b6678" text-anchor="middle">E 末尾</text>
+
+    <!-- new cluster line -->
+    <text x="20" y="197" font-size="13" fill="#39414f" font-weight="700">新集群</text>
+    <line x1="150" y1="192" x2="884" y2="192" stroke="#2f6fed" stroke-width="2.4"/>
+    <circle cx="150" cy="192" r="4.5" fill="#5b6678"/><text x="150" y="220" font-size="12" fill="#5b6678" text-anchor="middle">0</text>
+    <circle cx="544" cy="192" r="6" fill="#6b3fcc"/><text x="544" y="220" font-size="12" fill="#6b3fcc" text-anchor="middle" font-weight="700">C′ resume 点</text>
+    <circle cx="804" cy="192" r="4.5" fill="#5b6678"/><text x="804" y="220" font-size="12" fill="#5b6678" text-anchor="middle">E′</text>
+
+    <!-- mapping arrow -->
+    <path d="M524,100 C524,150 544,140 544,184" fill="none" stroke="#6b3fcc" stroke-width="2" stroke-dasharray="5 4"/>
+    <polygon points="539.5,176 544,188 548.5,176" fill="#6b3fcc"/>
+    <text x="566" y="150" font-size="12.5" fill="#6b3fcc" font-weight="600">timestamp 映射(C 处消息的时间戳 → C′)</text>
+
+    <!-- bottom note -->
+    <line x1="150" y1="246" x2="884" y2="246" stroke="#e3e7f0" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="150" y="266" font-size="12.5" fill="#5b6678"><tspan fill="#2348c0" font-weight="700">方案 A:</tspan>带 backlog 切,resume = C′(翻译得到)　<tspan fill="#c2cadd">|</tspan>　<tspan fill="#8f4e08" font-weight="700">方案 B:</tspan>已排空 ⇒ C=E,resume 直接取 E′(末尾)</text>
+  </svg>
+  <figcaption>图 2 · 两方案差异的本质:resume 点落在 backlog 中间(C′)还是落在历史末尾(E′)</figcaption>
+</figure>
+
+<!-- ===================== 方案 B ===================== -->
+<h2 class="sb"><span class="hbadge">B</span>endOffsets 快照(必须停生产者)</h2>
+
+<div class="card b">
+  <div class="applic b"><span class="ic">适用</span><span>能接受生产者短暂停机 / backlog 小、想要最简实现、无重复消费。</span></div>
+
+  <h3><span class="tick">原理</span>制造干净边界 E′</h3>
+  <p>制造一个<b>干净边界</b>:停生产者 → 让消费者把老集群消费到 <code>lag=0</code> → MM2 把老集群全量复制到新集群并排空。此时新集群冻结在末尾 <b>E′</b>,且 E′ 之前的数据消费者都已处理。于是消费者只需从 <b>E′</b> 开始即可——脚本退化成"取新集群 <code>endOffsets</code> 写进 DB"一行逻辑,无需时间戳、无重复消费。</p>
+
+  <figure class="fig">
+    <div class="legend">
+      <span><i class="sw" style="background:var(--green)"></i>生产者写入</span>
+      <span><i class="sw" style="background:var(--red)"></i>生产者停止</span>
+      <span><i class="sw" style="background:var(--blue)"></i>MM2 复制</span>
+      <span><i class="sw" style="background:var(--orange)"></i>消费者读取</span>
+      <span><i class="sw" style="background:var(--purple)"></i>脚本 / DB 写入</span>
+    </div>
+    <svg viewBox="0 0 960 352" role="img" aria-label="方案B时间线泳道图">
+      <!-- frozen window backdrop -->
+      <rect x="404" y="40" width="316" height="258" rx="6" fill="#fbeed7" opacity="0.7"/>
+      <line x1="404" y1="40" x2="404" y2="298" stroke="#a85d0a" stroke-width="1.3" stroke-dasharray="5 4"/>
+      <line x1="720" y1="40" x2="720" y2="298" stroke="#a85d0a" stroke-width="1.3" stroke-dasharray="5 4"/>
+      <text x="562" y="32" font-size="12.5" fill="#8f4e08" text-anchor="middle" font-weight="700">❄ 冻结窗口(新集群末尾 E′ 不动)</text>
+
+      <!-- time axis -->
+      <line x1="148" y1="54" x2="930" y2="54" stroke="#c2cadd" stroke-width="1.4"/>
+      <polygon points="930,49.5 944,54 930,58.5" fill="#c2cadd"/>
+      <text x="906" y="45" font-size="12" fill="#828ca0">时间 →</text>
+
+      <!-- lane labels -->
+      <text x="20" y="98"  font-size="13" fill="#39414f" font-weight="700">生产者</text>
+      <text x="20" y="156" font-size="13" fill="#39414f" font-weight="700">MM2 复制</text>
+      <text x="20" y="214" font-size="13" fill="#39414f" font-weight="700">消费者</text>
+      <text x="20" y="258" font-size="13" fill="#39414f" font-weight="700">脚本 / DB</text>
+
+      <!-- producer lane (y 76..110) -->
+      <rect x="148" y="76" width="256" height="34" rx="8" fill="#e3f4ea" stroke="#0f8a52" stroke-width="1.3"/>
+      <text x="276" y="98" font-size="13" fill="#0f8a52" text-anchor="middle" font-weight="700">写老集群</text>
+      <rect x="404" y="76" width="316" height="34" rx="8" fill="#fbe7e5" stroke="#d2403a" stroke-width="1.4"/>
+      <text x="562" y="98" font-size="13" fill="#d2403a" text-anchor="middle" font-weight="800">✕ 停止</text>
+      <rect x="720" y="76" width="204" height="34" rx="8" fill="#e3f4ea" stroke="#0f8a52" stroke-width="1.3"/>
+      <text x="822" y="98" font-size="13" fill="#0f8a52" text-anchor="middle" font-weight="700">写新集群</text>
+
+      <!-- mm2 lane (y 134..168) -->
+      <rect x="404" y="134" width="236" height="34" rx="8" fill="#e8effd" stroke="#2f6fed" stroke-width="1.3"/>
+      <text x="522" y="156" font-size="13" fill="#2f6fed" text-anchor="middle" font-weight="700">排空 老 → 新</text>
+      <text x="650" y="156" font-size="12" fill="#2f6fed" font-weight="600">→ 停</text>
+
+      <!-- consumer lane (y 192..226) -->
+      <rect x="148" y="192" width="256" height="34" rx="8" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1.3"/>
+      <text x="276" y="214" font-size="13" fill="#bd6f0a" text-anchor="middle" font-weight="700">读老集群</text>
+      <rect x="404" y="192" width="220" height="34" rx="8" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1.3"/>
+      <text x="514" y="214" font-size="12.5" fill="#bd6f0a" text-anchor="middle" font-weight="700">消费到 lag=0</text>
+      <rect x="720" y="192" width="204" height="34" rx="8" fill="#fbeed7" stroke="#bd6f0a" stroke-width="1.3"/>
+      <text x="822" y="214" font-size="13" fill="#bd6f0a" text-anchor="middle" font-weight="700">读新集群</text>
+
+      <!-- script lane: inside frozen window, connector up to producer switch boundary -->
+      <line x1="664" y1="247" x2="664" y2="110" stroke="#6b3fcc" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <polygon points="660,118 664,106 668,118" fill="#6b3fcc"/>
+      <circle cx="664" cy="256" r="9" fill="#6b3fcc"/>
+      <text x="664" y="288" font-size="12" fill="#6b3fcc" text-anchor="middle" font-weight="700">抓 endOffsets = E′</text>
+      <text x="664" y="304" font-size="12" fill="#6b3fcc" text-anchor="middle" font-weight="700">→ 写 DB(须在切生产者前)</text>
+
+      <!-- annotation band -->
+      <rect x="148" y="318" width="776" height="30" rx="9" fill="#fbeed7" stroke="#f0dcb5" stroke-width="1.1"/>
+      <text x="536" y="338" font-size="12" fill="#8f4e08" text-anchor="middle">生产者停机 = 消费者 drain + MM2 drain 全程;抓 E′ 与切消费者必须在切生产者之前</text>
+    </svg>
+    <figcaption>图 3 · 方案 B 时间线:生产者在整个排空窗口内停止;E′ 必须在生产者切回之前、于冻结窗口内抓取</figcaption>
+  </figure>
+
+  <h3><span class="tick">步骤</span>切换流程(每个 topic 独立执行)</h3>
+  <ol class="steps">
+    <li><b>停老集群该 topic 的生产者。</b>老集群末尾 E 从此不再增长。</li>
+    <li><b>消费者把老集群消费到 <code>lag=0</code></b>(处理完所有 backlog)。</li>
+    <li><b>等 MM2 排空</b>(老→新 lag=0):新集群拿到老集群 100% 数据,冻结在 E′。</li>
+    <li><b>在冻结窗口内抓 <code>endOffsets</code>=E′,写进 DB</b>(覆盖该分区 offset)。<b>必须在生产者切回之前做</b>,否则 E′ 会被新写入推高 → 跳过新数据。</li>
+    <li><b>切消费者</b>到新集群:读 DB(=E′)→ seek 到 E′,等待新生产。</li>
+    <li><b>停 MM2 → 切生产者</b>到新集群开始写入。消费者从 E′ 顺势接住所有新生产,不漏不重。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="ct">顺序是关键(load-bearing)</span>
+    抓 E′ + 切消费者必须在<b>切生产者之前</b>。若生产者已切、新集群在写,<code>endOffsets</code> 是移动目标,写进 DB 会让消费者从更靠后的位置开始,<b>跳过中间已写入的新消息(丢数据)</b>。
+  </div>
+  <div class="callout tip">
+    <span class="ct">极简脚本</span>
+    <code>for each partition: db.set(p, newConsumer.endOffsets(tp))</code> —— 不碰老集群、不用时间戳、无边界特例、无重复消费。代价仅仅是生产者停机时长 = 消费者 drain + MM2 drain 的全程(backlog 越大停越久)。
+  </div>
+</div>
+
+<!-- ===================== 对比 ===================== -->
+<h2>两方案对比</h2>
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr><th>维度</th><th>方案 A · timestamp 映射脚本</th><th>方案 B · endOffsets 快照</th></tr>
+  </thead>
+  <tbody>
+    <tr><th>生产者停机</th><td class="ok"><span class="verdict"><span class="vi">✓</span>基本不停(切换瞬间暂停几秒)</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>整个排空窗口(drain + MM2 排空)</span></td></tr>
+    <tr><th>需要消费者排空</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不需要,可带 backlog 切</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>必须 lag=0</span></td></tr>
+    <tr><th>脚本复杂度</th><td class="no"><span class="verdict"><span class="vi">✕</span>高(seek+poll 取时间戳、offsetsForTimes、边界处理)</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>极低(一行 endOffsets)</span></td></tr>
+    <tr><th>是否依赖冻结窗口 / 切换顺序</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不依赖,order-independent</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>强依赖(抓 E′ 必须在切生产者前)</span></td></tr>
+    <tr><th>重复消费</th><td class="no"><span class="verdict"><span class="vi">✕</span>边界处可能重复一两条 → 需幂等去重</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>无</span></td></tr>
+    <tr><th>改消费者代码</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不改</span></td><td class="ok"><span class="verdict"><span class="vi">✓</span>不改</span></td></tr>
+    <tr><th>适合场景</th><td>生产者多、不能长停;backlog 大</td><td>能接受短停机;backlog 小、求简单稳妥</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ===================== 通用注意 ===================== -->
+<h2>两方案通用的注意事项</h2>
+<ul class="k">
+  <li><b>按 topic / 业务分批切</b>,每个 topic 独立做一次小型 cutover,风险隔离、窗口短。<b>切勿</b>把同一个 topic 的生产者拆成"一部分写老、一部分写新"——MM2 单向复制会导致新集群乱序。</li>
+  <li><b>MM2 用 <code>IdentityReplicationPolicy</code></b>,让复制后的 topic 在新集群<b>同名</b>,迁移对生产者/消费者透明。</li>
+  <li><b>切完的 topic 从 MM2 复制列表移除</b>,只继续复制未迁移的 topic,避免重复/回环。</li>
+  <li><b>DB 里的老 offset 必须被覆盖</b>:MM2 不保证 offset 相同,老 offset 在新集群是错误数字,直接 seek 会乱读。</li>
+  <li><b>有数据依赖的 topic</b>(消费 A 后又生产到 B)应同批或按依赖顺序迁移。</li>
+  <li class="hl"><b>长期增强(可选):</b>给 DB 加一列 <code>last_msg_timestamp</code>,消费者每次提交 offset 时一并存"最后处理那条"的时间戳。这样以后任何跨集群迁移/容灾都能直接用方案 A,省掉到老集群反查时间戳的步骤。</li>
+</ul>
+
+<footer>
+  MSK Standard → Express 迁移方案说明 · MirrorMaker 2 单向复制 + 外部 DB offset 切换
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """T7 — live scenario validation against the real MSK cluster + MM2.
 
-Runs the actual deliverable CLIs (consumer_sim + migrate_scheme_a/b) end-to-end
+Runs the actual deliverable CLIs (consumer_sim + migrate_by_timestamp & migrate_by_endoffsets) end-to-end
 and asserts the resume point by reading the real record at the resulting offset.
 
 Scheme A resolves with offsets_for_times(last_msg_ts) (NOT +1): resume lands on
@@ -69,12 +69,12 @@ def sim(db, topic, partition, *flags):
 
 
 def scheme_a(db):
-    return run([PY, "-m", "offset_migration.migrate_scheme_a",
+    return run([PY, "-m", "offset_migration.migrate_by_timestamp",
                 "--bootstrap", BS, "--db", db, "--partitions", "2"])
 
 
 def scheme_b(db):
-    return run([PY, "-m", "offset_migration.migrate_scheme_b",
+    return run([PY, "-m", "offset_migration.migrate_by_endoffsets",
                 "--bootstrap", BS, "--db", db, "--partitions", "2"])
 
 
