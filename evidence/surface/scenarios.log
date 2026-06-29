@@ -1,19 +1,19 @@
 
-=== S1: Scheme A BACKLOG (orders p0, committed=6) -> src.orders @11 == k6 ===
+=== S1: Scheme A BACKLOG (orders p0 committed=6) -> src.orders @10 == k5 (reprocess) ===
     $ /usr/bin/python3 /home/ec2-user/work/aws/customer/idaily/harness/consumer_sim.py --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s1.db --topic orders --partition 0 --upto 6
-      [consumer_sim] last processed offset=5 -> last_msg_ts=1782698739797
-      [consumer_sim] wrote to /tmp/opencode/s1.db: topic=orders partition=0 committed_offset=6 last_msg_ts=1782698739797
-      [consumer_sim] readback: (6, 1782698739797)
+      [consumer_sim] last processed offset=5 -> last_msg_ts=1782702078301
+      [consumer_sim] wrote to /tmp/opencode/s1.db: topic=orders partition=0 committed_offset=6 last_msg_ts=1782702078301
+      [consumer_sim] readback: (6, 1782702078301)
     $ /usr/bin/python3 -m offset_migration.migrate_scheme_a --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s1.db --partitions 2
       [scheme_a] old_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 new_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092
       [scheme_a] old_topic=orders new_topic=src.orders partitions=[0, 1] security_protocol=PLAINTEXT
-      p0: old(orders)@6 ts=1782698739797 -> new(src.orders)@11
+      p0: old(orders)@6 ts=1782702078301 -> new(src.orders)@10
       [scheme_a] WARNING: no OffsetDB row for orders p1; skipping
       [scheme_a] done.
-  [PASS] S1 new_off == 11 :: DB(src.orders,p0)=(11, 1782698739797)
-  [PASS] S1 record@11 is k6 :: record={'offset': 11, 'key': 'k6', 'value': 'v6', 'timestamp': 1782698740797}
+  [PASS] S1 new_off == 10 :: DB(src.orders,p0)=(10, 1782702078301)
+  [PASS] S1 record@10 is k5 (reprocess-safe, no skip) :: record={'offset': 10, 'key': 'k5', 'value': 'v5', 'timestamp': 1782702078301}
 
-=== S1b: Scheme A REVERSE-LOOKUP (offset-only DB, no ts) -> same @11 ===
+=== S1b: Scheme A REVERSE-LOOKUP (offset-only DB, no ts) -> same @10 ===
     $ /usr/bin/python3 /home/ec2-user/work/aws/customer/idaily/harness/consumer_sim.py --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s1b.db --topic orders --partition 0 --upto 6 --no-timestamp
       [consumer_sim] --no-timestamp: storing offset only, last_msg_ts=None
       [consumer_sim] wrote to /tmp/opencode/s1b.db: topic=orders partition=0 committed_offset=6 last_msg_ts=None
@@ -21,26 +21,29 @@
     $ /usr/bin/python3 -m offset_migration.migrate_scheme_a --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s1b.db --partitions 2
       [scheme_a] old_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 new_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092
       [scheme_a] old_topic=orders new_topic=src.orders partitions=[0, 1] security_protocol=PLAINTEXT
-      p0: old(orders)@6 ts=None -> new(src.orders)@11
+      p0: old(orders)@6 ts=None -> new(src.orders)@10
       [scheme_a] WARNING: no OffsetDB row for orders p1; skipping
       [scheme_a] done.
-  [PASS] S1b reverse-lookup new_off == 11 :: DB(src.orders,p0)=(11, None) (ts re-read live from OLD cluster offset 5)
+  [PASS] S1b reverse-lookup new_off == 10 :: DB(src.orders,p0)=(10, None) (ts re-read live from OLD cluster offset 5)
 
-=== S2: Scheme A CAUGHT-UP boundary (orders p1 drained) -> endOffset 13, then read new ===
+=== S2: Scheme A CAUGHT-UP (orders p1 drained) -> @12 == k9 (reprocess), then new k10 @13 ===
     $ /usr/bin/python3 /home/ec2-user/work/aws/customer/idaily/harness/consumer_sim.py --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s2.db --topic orders --partition 1 --caughtup
       [consumer_sim] --caughtup: end_offset(orders p1)=10
-      [consumer_sim] last processed offset=9 -> last_msg_ts=1782698743797
-      [consumer_sim] wrote to /tmp/opencode/s2.db: topic=orders partition=1 committed_offset=10 last_msg_ts=1782698743797
-      [consumer_sim] readback: (10, 1782698743797)
+      [consumer_sim] last processed offset=9 -> last_msg_ts=1782702082301
+      [consumer_sim] wrote to /tmp/opencode/s2.db: topic=orders partition=1 committed_offset=10 last_msg_ts=1782702082301
+      [consumer_sim] readback: (10, 1782702082301)
     $ /usr/bin/python3 -m offset_migration.migrate_scheme_a --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s2.db --partitions 2
       [scheme_a] old_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 new_bootstrap=b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092
       [scheme_a] old_topic=orders new_topic=src.orders partitions=[0, 1] security_protocol=PLAINTEXT
       [scheme_a] WARNING: no OffsetDB row for orders p0; skipping
-      p1: old(orders)@10 ts=1782698743797 -> new(src.orders)@13
+      p1: old(orders)@10 ts=1782702082301 -> new(src.orders)@12
       [scheme_a] done.
-  [PASS] S2 boundary new_off == 13 (end fallback) :: DB(src.orders,p1)=(13, 1782698743797)
-      produced orders p1 k10 @offset 10 ts=1782698744797
-  [PASS] S2 resume@13 reads the new k10 (no skip/dup) :: src.orders p1 end=14, record@13={'offset': 13, 'key': 'k10', 'value': 'v10', 'timestamp': 1782698744797}
+  [PASS] S2 new_off == 12 (reprocess last k9, no skip) :: DB(src.orders,p1)=(12, 1782702082301), record@12={'offset': 12, 'key': 'k9', 'value': 'v9', 'timestamp': 1782702082301}
+      produced orders p1 k10 @offset 10 ts=1782702083301
+  [PASS] S2 resume@12 then reads new k10 @13 (no skip) :: src.orders p1 end=14, record@13={'offset': 13, 'key': 'k10', 'value': 'v10', 'timestamp': 1782702083301}
+
+=== S2b: Scheme A TARGET-BEHIND -> offsets_for_times None -> end_offsets (live) ===
+  [PASS] S2b None-fallback resolves to live end_offsets :: future_ts beyond target -> resume=14, live end=14
 
 === S3: Scheme B endOffsets SNAPSHOT (src.orders p0) then post-cutover produce ===
     $ /usr/bin/python3 -m offset_migration.migrate_scheme_b --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s3.db --partitions 2
@@ -51,11 +54,11 @@
       p1: new(src.orders) endOffset -> @14
       [scheme_b] done.
   [PASS] S3 snapshot == frozen end (15) :: DB(src.orders,p0)=(15, None), live end_before=15
-      produced src.orders p0 n0 @offset 15 ts=1782698996066
-      produced src.orders p0 n1 @offset 16 ts=1782698996067
-      produced src.orders p0 n2 @offset 17 ts=1782698996068
+      produced src.orders p0 n0 @offset 15 ts=1782702109217
+      produced src.orders p0 n1 @offset 16 ts=1782702109218
+      produced src.orders p0 n2 @offset 17 ts=1782702109219
   [PASS] S3 consumer from snapshot reads exactly the 3 new (n0,n1,n2) :: @15=n0 @16=n1 @17=n2
-  [PASS] S3 nothing before snapshot re-read (offset 14 is last old k9) :: record@14={'offset': 14, 'key': 'k9', 'value': 'v9', 'timestamp': 1782698743797}
+  [PASS] S3 nothing before snapshot re-read (offset 14 is last old k9) :: record@14={'offset': 14, 'key': 'k9', 'value': 'v9', 'timestamp': 1782702082301}
 
 === S4: Scheme A NEVER-CONSUMED (offset 0, no ts) -> beginning offset ===
     $ /usr/bin/python3 /home/ec2-user/work/aws/customer/idaily/harness/consumer_sim.py --bootstrap b-2.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092,b-1.ulwoffsetvalidation.3elbqu.c3.kafka.us-east-1.amazonaws.com:9092 --db /tmp/opencode/s4.db --topic orders --partition 0 --upto 0
@@ -70,14 +73,21 @@
       [scheme_a] done.
   [PASS] S4 never-consumed -> beginning offset :: DB(src.orders,p0)=(0, None), begin_offset=0
 
+=== S-dup: DUPLICATE-TIMESTAMP skip-safety (live) -> resume includes the unprocessed twin ===
+      produced src.orders p0 d0 @offset 18 ts=1782702160914
+      produced src.orders p0 d1 @offset 19 ts=1782702160914
+  [PASS] S-dup resume lands on first dup (d0) -> d1 NOT skipped :: resume=18 (d0@18, d1@19); last_ts+1 would give None (skips d1)
+
 ==================== SCENARIO SUMMARY ====================
-  PASS  S1 new_off == 11
-  PASS  S1 record@11 is k6
-  PASS  S1b reverse-lookup new_off == 11
-  PASS  S2 boundary new_off == 13 (end fallback)
-  PASS  S2 resume@13 reads the new k10 (no skip/dup)
+  PASS  S1 new_off == 10
+  PASS  S1 record@10 is k5 (reprocess-safe, no skip)
+  PASS  S1b reverse-lookup new_off == 10
+  PASS  S2 new_off == 12 (reprocess last k9, no skip)
+  PASS  S2 resume@12 then reads new k10 @13 (no skip)
+  PASS  S2b None-fallback resolves to live end_offsets
   PASS  S3 snapshot == frozen end (15)
   PASS  S3 consumer from snapshot reads exactly the 3 new (n0,n1,n2)
   PASS  S3 nothing before snapshot re-read (offset 14 is last old k9)
   PASS  S4 never-consumed -> beginning offset
-  9/9 checks PASSED
+  PASS  S-dup resume lands on first dup (d0) -> d1 NOT skipped
+  11/11 checks PASSED
