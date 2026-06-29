@@ -83,16 +83,20 @@ def translate_timestamp(
            cluster: last_msg_ts = old_client.record_ts_at(old_topic, partition,
            committed_offset - 1)
 
-        3. resume = new_client.offsets_for_times(new_topic, partition,
-                                                 last_msg_ts + 1)
-           The "+1" skips the already-processed last message and lands on the
-           first UNprocessed one. (Boundary reprocess is <=1 record; consumers
-           must dedup by business key — documented in README.)
+        3. resume = new_client.offsets_for_times(new_topic, partition, last_msg_ts)
+           Lands on the FIRST record whose ts >= last_msg_ts: the last-processed
+           message itself (unique timestamps) or the earliest record sharing that
+           timestamp (duplicate timestamps). The consumer reprocesses from there
+           — bounded by the size of the same-timestamp group — and MUST dedup by
+           business key. This NEVER skips an unprocessed record: under
+           same-millisecond bursts at the boundary, using last_msg_ts+1 would
+           jump past still-unprocessed records (silent data loss dedup cannot
+           recover), so we deliberately do NOT add 1 — reprocess (safe) > skip.
 
-        4. caught-up boundary: if offsets_for_times returned None (no record with
-           ts > last_msg_ts yet) -> resume = new_client.end_offsets(new_topic,
-           partition). The next replicated/produced record lands there and is read
-           exactly once.
+        4. caught-up / target-behind boundary: offsets_for_times returns None when
+           last_msg_ts is newer than every record currently on the target (the
+           consumer was ahead of replication, or the record was purged) -> resume
+           = new_client.end_offsets(new_topic, partition).
 
     Returns the integer offset to write back to the external DB.
     """
@@ -114,11 +118,10 @@ def translate_timestamp(
                 f"could not reverse-look-up timestamp at old offset {committed_offset - 1} for {old_topic}[{partition}]: record unavailable on the old cluster"
             )
 
-    # 3. resume at the first UNprocessed message (+1 skips the last processed one).
-    resume = new_client.offsets_for_times(new_topic, partition, last_msg_ts + 1)
+    # NOT last_msg_ts+1: +1 would skip unprocessed records sharing the boundary
+    # timestamp (data loss); >= reprocesses safely and the consumer dedups by key.
+    resume = new_client.offsets_for_times(new_topic, partition, last_msg_ts)
 
-    # 4. caught-up boundary: no record with ts > last_msg_ts yet -> the log end is
-    #    the resume point, so the next replicated/produced record is read once.
     if resume is None:
         resume = new_client.end_offsets(new_topic, partition)
 

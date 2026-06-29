@@ -41,9 +41,11 @@ offset.storage.replication.factor = 2
 status.storage.replication.factor = 2
 config.storage.replication.factor = 2
 
-# Emit heartbeats; checkpoints/group-offset sync are off for this validation
-# (the external OffsetDB + translation logic owns offset re-mapping, not MM2).
-emit.heartbeats.enabled = true
+# Heartbeats/checkpoints/group-offset sync all OFF for this validation: the
+# external OffsetDB + translation logic owns offset re-mapping, not MM2. (On a
+# same-cluster src==dst setup, emitting heartbeats makes DefaultReplicationPolicy
+# re-replicate them recursively into src.src.…heartbeats, so keep it off.)
+emit.heartbeats.enabled = false
 emit.checkpoints.enabled = false
 sync.group.offsets.enabled = false
 

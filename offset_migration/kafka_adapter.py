@@ -131,7 +131,7 @@ class KafkaPythonClient:
         consumer.seek(tp, offset)
         batch = consumer.poll(timeout_ms=5000, max_records=1)
         records = batch.get(tp) or []
-        if not records:
+        if not records or records[0].offset != offset:
             return None
         return records[0].timestamp
 
