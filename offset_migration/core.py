@@ -41,12 +41,15 @@ class OffsetClient(Protocol):
         Returns None if no such message exists yet (the timestamp is at/after the
         current log end) — this is the "caught-up" signal Scheme A relies on.
         """
+        ...
 
     def end_offsets(self, topic: str, partition: int) -> int:
         """Log-end offset (the offset the next produced record will get)."""
+        ...
 
     def beginning_offsets(self, topic: str, partition: int) -> int:
         """Earliest still-available offset."""
+        ...
 
     def record_ts_at(self, topic: str, partition: int, offset: int) -> Optional[int]:
         """Timestamp (ms) of the record AT `offset`, or None if unavailable.
@@ -54,6 +57,7 @@ class OffsetClient(Protocol):
         Used only by Scheme A's reverse-lookup path when the external DB stored an
         offset but no timestamp: we read it from the OLD cluster.
         """
+        ...
 
 
 def translate_timestamp(
