@@ -1,0 +1,53 @@
+# MirrorMaker 2 standalone config for the offset-migration validation.
+#
+# Replicates SOURCE topic `orders` -> TARGET topic `src.orders` on the SAME
+# cluster (both `src` and `dst` point at the one MSK cluster). The
+# DefaultReplicationPolicy prefixes the source alias, so `orders` from alias
+# `src` becomes `src.orders` on the target.
+#
+# {{BOOTSTRAP}} is substituted by run_mm2.sh (comma-separated host:port list).
+#
+# Run with:
+#   connect-mirror-maker.sh harness/mm2.properties
+
+# Cluster aliases (alias `src` => target prefix `src.`).
+clusters = src, dst
+
+# Both aliases point at the single validation cluster.
+src.bootstrap.servers = {{BOOTSTRAP}}
+dst.bootstrap.servers = {{BOOTSTRAP}}
+
+# One-way flow: src -> dst only.
+src->dst.enabled = true
+dst->src.enabled = false
+
+# Replicate ONLY `orders` (EXACT). This prevents the already-prefixed
+# `src.orders` from being picked up and re-replicated into `src.src.orders`.
+src->dst.topics = orders
+
+# DefaultReplicationPolicy => target name is <alias>.<topic> = src.orders
+replication.policy.class = org.apache.kafka.connect.mirror.DefaultReplicationPolicy
+
+# Replication factor for newly created remote topics.
+replication.factor = 2
+
+# Internal MM2 topic replication factors.
+checkpoints.topic.replication.factor = 2
+heartbeats.topic.replication.factor = 2
+offset-syncs.topic.replication.factor = 2
+
+# Connect internal topic replication factors.
+offset.storage.replication.factor = 2
+status.storage.replication.factor = 2
+config.storage.replication.factor = 2
+
+# Emit heartbeats; checkpoints/group-offset sync are off for this validation
+# (the external OffsetDB + translation logic owns offset re-mapping, not MM2).
+emit.heartbeats.enabled = true
+emit.checkpoints.enabled = false
+sync.group.offsets.enabled = false
+
+# Pick up the pre-created `orders` topic quickly.
+refresh.topics.interval.seconds = 10
+
+tasks.max = 1
