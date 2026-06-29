@@ -40,6 +40,12 @@ group and **never skips** an unprocessed record. (With `ts+1`, records sharing t
 millisecond would be silently skipped — data loss dedup cannot recover.) Consumers therefore **must
 dedup by business key**; reprocessing is bounded by the size of the same-timestamp group.
 
+> **Caveat:** skip-safety assumes per-partition timestamps are **non-decreasing** (the normal case for
+> a single producer using `CreateTime`). If producers write wildly out-of-order timestamps within a
+> partition, an unprocessed record with `ts < last_msg_ts` could still be skipped — inherent to any
+> timestamp-based mapping. Also ensure the NEW topic uses `CreateTime` (not `LogAppendTime`), or MM2's
+> preserved timestamps won't line up.
+
 ### Scheme B (per partition)
 Precondition (operational): producers stopped + consumer drained + MM2 drained → target frozen at `E'`.
 Then `resume = end_offsets(new_topic)`. Capture `endOffsets` **before** producers switch to the new

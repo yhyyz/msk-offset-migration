@@ -17,11 +17,13 @@ WHY TIMESTAMP MAPPING
 OPERATIONAL PROPERTIES (Scheme A)
     * Producers basically don't stop — no production freeze required.
     * Order-independent: partitions are translated independently and in any order.
-    * The "+1" in the core lands the consumer on the first UNprocessed message;
-      the boundary can re-deliver AT MOST ONE record, so consumers MUST dedup by
-      business key (idempotent processing). See README.
-    * Caught-up partitions (no record newer than last_msg_ts yet) resolve to the
-      NEW topic's end offset, so the next replicated/produced record is read once.
+    * Resume lands on the first record with ts >= last_msg_ts (the last-processed
+      message, or the earliest record sharing its timestamp). The consumer
+      reprocesses from there — bounded by the same-timestamp group — and MUST dedup
+      by business key. It NEVER skips an unprocessed record: the core uses
+      last_msg_ts, NOT last_msg_ts+1 (which would skip same-millisecond records).
+    * Target-behind (no record with ts >= last_msg_ts on the target yet) resolves to
+      the NEW topic's end offset, so the next replicated/produced record is read once.
 
 The offset math itself lives in ``offset_migration.core.translate_timestamp`` and
 is unit-tested with zero infrastructure; this CLI is only the live wiring.

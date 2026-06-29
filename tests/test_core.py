@@ -137,3 +137,38 @@ def test_duplicate_timestamp_does_not_skip_unprocessed() -> None:
 def test_translate_endoffsets_returns_end_offset() -> None:
     client = MockKafkaClient({("target", 0): build_target_records(5)})
     assert translate_endoffsets(client, "target", 0) == client.end_offsets("target", 0) == 15
+
+
+# (h) Adapter guard (defect #2): a compacted/retention-deleted offset makes poll
+# return a LATER record; record_ts_at must reject the mismatch (return None) rather
+# than silently use that record's timestamp.
+def test_adapter_record_ts_at_rejects_offset_mismatch() -> None:
+    from kafka import TopicPartition
+    from offset_migration.kafka_adapter import KafkaPythonClient
+
+    class _Rec:
+        def __init__(self, offset: int, timestamp: int) -> None:
+            self.offset = offset
+            self.timestamp = timestamp
+
+    class _FakeConsumer:
+        def __init__(self, rec: "Optional[_Rec]") -> None:
+            self._rec = rec
+
+        def assign(self, tps) -> None: ...
+        def seek(self, tp, offset) -> None: ...
+        def poll(self, timeout_ms=0, max_records=None):
+            return {TopicPartition("t", 0): ([self._rec] if self._rec else [])}
+        def close(self) -> None: ...
+
+    mismatch = KafkaPythonClient("dummy:9092")
+    mismatch._consumer = _FakeConsumer(_Rec(7, 12345))
+    assert mismatch.record_ts_at("t", 0, 5) is None
+
+    exact = KafkaPythonClient("dummy:9092")
+    exact._consumer = _FakeConsumer(_Rec(5, 99999))
+    assert exact.record_ts_at("t", 0, 5) == 99999
+
+    empty = KafkaPythonClient("dummy:9092")
+    empty._consumer = _FakeConsumer(None)
+    assert empty.record_ts_at("t", 0, 5) is None
