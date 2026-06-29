@@ -218,8 +218,8 @@
   th,td{padding:13px 16px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top}
   tbody th{font-weight:700; color:var(--ink-2); white-space:nowrap; background:var(--surface-2); width:1%}
   th:nth-child(2),td:nth-child(2){border-left:1px solid var(--line)}
-  thead th:nth-child(2){border-top:3px solid var(--a)}
-  thead th:nth-child(3){border-top:3px solid var(--b)}
+  table.cmp thead th:nth-child(2){border-top:3px solid var(--a)}
+  table.cmp thead th:nth-child(3){border-top:3px solid var(--b)}
   td .verdict{display:inline-flex; align-items:baseline; gap:7px; font-weight:600}
   td.ok .verdict{color:var(--ok)} td.no .verdict{color:var(--no)}
   td .vi{font-family:var(--mono); font-weight:800; flex:0 0 auto}
@@ -257,6 +257,39 @@
     margin-top:56px; color:var(--muted); font-size:12.5px; text-align:center;
     border-top:1px solid var(--line); padding-top:22px; font-family:var(--mono); letter-spacing:.02em;
   }
+
+  /* ============ Code block ============ */
+  pre.code{
+    margin:14px 0; background:var(--surface-3); border:1px solid var(--line-2);
+    border-radius:12px; padding:15px 18px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    font-family:var(--mono); font-size:12.8px; line-height:1.78; color:#26314a;
+  }
+  pre.code .cm{color:#8a93a6; font-style:italic}
+  pre.code .kw{color:var(--a-ink); font-weight:700}
+  pre.code .st{color:#0c6b41}
+
+  /* ============ File links ============ */
+  ul.filelist{list-style:none; padding:0; margin:14px 0; display:grid; gap:9px}
+  ul.filelist a{
+    display:flex; gap:5px 14px; align-items:baseline; flex-wrap:wrap; text-decoration:none;
+    background:var(--surface); border:1px solid var(--line); border-radius:11px;
+    padding:11px 15px; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s;
+  }
+  ul.filelist a:hover{border-color:#c2d3fb; box-shadow:var(--shadow-md)}
+  ul.filelist .fp{font-family:var(--mono); font-size:13px; color:var(--a-ink); font-weight:700; overflow-wrap:anywhere}
+  ul.filelist .fd{color:var(--muted); font-size:13px}
+
+  /* ============ Repo card ============ */
+  .repo{
+    display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap;
+    background:linear-gradient(0deg, var(--a-bg) 0%, var(--surface) 70%);
+    border:1px solid #cfe0ff; border-radius:14px;
+    padding:16px 20px; box-shadow:var(--shadow-sm); margin:20px 0 4px;
+  }
+  .repo .gh{font-family:var(--mono); font-weight:700; font-size:12px; letter-spacing:.04em;
+    color:var(--a-ink); background:var(--surface); border:1px solid #cfe0ff; padding:4px 10px; border-radius:7px}
+  .repo a{color:var(--a-ink); text-decoration:none; font-weight:700; font-size:15px; overflow-wrap:anywhere}
+  .repo a:hover{text-decoration:underline}
 
   /* ============ Responsive ============ */
   @media (max-width:680px){
@@ -548,7 +581,7 @@
 <!-- ===================== 对比 ===================== -->
 <h2>两方案对比</h2>
 <div class="table-scroll">
-<table>
+<table class="cmp">
   <thead>
     <tr><th>维度</th><th>方案 A · timestamp 映射脚本</th><th>方案 B · endOffsets 快照</th></tr>
   </thead>
@@ -616,6 +649,63 @@
   <li><b>有数据依赖的 topic</b>(消费 A 后又生产到 B)应同批或按依赖顺序迁移。</li>
   <li class="hl"><b>长期增强(可选):</b>给 DB 加一列 <code>last_msg_timestamp</code>,消费者每次提交 offset 时一并存"最后处理那条"的时间戳。这样以后任何跨集群迁移/容灾都能直接用方案 A,省掉到老集群反查时间戳的步骤。</li>
 </ul>
+
+<!-- ===================== 代码与数据样例 ===================== -->
+<h2>代码与数据样例 · 仓库源码</h2>
+
+<h3><span class="tick">数据</span>OffsetDB 存储样例(SQLite · 每分区一行)</h3>
+<p>消费者把「下一条要读的 offset(<code>committed_offset</code>)」+「最后处理那条消息的时间戳(<code>last_msg_ts</code>)」存进外部 DB。迁移脚本<b>只改写这张表里的 offset</b>,消费者代码不动。下面是验证里的真实数据(对应实测 S1/S2):</p>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>阶段</th><th>topic</th><th>partition</th><th>committed_offset</th><th>last_msg_ts</th></tr></thead>
+  <tbody>
+    <tr><th>迁移前(老集群)</th><td><code>orders</code></td><td>0</td><td>6</td><td><code>1782698739797</code></td></tr>
+    <tr><th>迁移前(老集群)</th><td><code>orders</code></td><td>1</td><td>10</td><td><code>1782698743797</code></td></tr>
+    <tr><th>方案A 改写后(新集群)</th><td><code>src.orders</code></td><td>0</td><td><b>10</b></td><td><code>1782698739797</code></td></tr>
+    <tr><th>方案A 改写后(新集群)</th><td><code>src.orders</code></td><td>1</td><td><b>12</b></td><td><code>1782698743797</code></td></tr>
+  </tbody>
+</table>
+</div>
+<p><code>migrate_by_timestamp.py</code> 用 <code>last_msg_ts</code> 在新集群 <code>offsetsForTimes</code> 反查:p0 的 <code>6 → 10</code>、p1 的 <code>10 → 12</code> —— 正是实测 S1 / S2 的结果。建表语句:<code>offsets(topic, partition, committed_offset, last_msg_ts)</code>,主键 <code>(topic, partition)</code>。</p>
+
+<h3><span class="tick">消费</span>消费者代码样例(迁移前后完全不变)</h3>
+<pre class="code"><span class="cm"># 消费者:迁移前后代码一行都不用改 —— 永远是「读 DB offset → seek」</span>
+<span class="cm"># 迁移脚本只改写 DB 里的 offset;切到新集群只是换 bootstrap + topic 名</span>
+from kafka import KafkaConsumer, TopicPartition
+from offset_migration.offsetdb import OffsetDB
+
+db = OffsetDB(<span class="st">"offsets.db"</span>)
+consumer = KafkaConsumer(bootstrap_servers=BOOTSTRAP,
+                         enable_auto_commit=False, group_id=None)
+tp = TopicPartition(TOPIC, PARTITION)
+consumer.assign([tp])
+
+row = db.get(TOPIC, PARTITION)            <span class="cm"># -> (committed_offset, last_msg_ts)</span>
+consumer.seek(tp, row[0] if row else 0)   <span class="cm"># 从 DB 记录的位置继续</span>
+
+for rec in consumer:
+    process(rec)                          <span class="cm"># 业务处理:按业务主键幂等去重</span>
+    <span class="cm"># 提交:存「下一条要读的 offset」+「这条消息的时间戳」</span>
+    db.upsert(TOPIC, PARTITION, rec.offset + 1, rec.timestamp)</pre>
+<p>关键点:消费者<b>始终</b>存 <code>last_msg_ts</code>(这条消息的时间戳),方案A 切换时才能靠它反查新集群 offset;<code>process()</code> 必须按业务主键<b>幂等去重</b>,吸收边界重处理。</p>
+
+<h3><span class="tick">源码</span>迁移脚本与核心实现(GitHub)</h3>
+<ul class="filelist">
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/offset_migration/migrate_by_timestamp.py"><span class="fp">offset_migration/migrate_by_timestamp.py</span><span class="fd">方案A CLI · 时间戳映射(生产者基本不停)</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/offset_migration/migrate_by_endoffsets.py"><span class="fp">offset_migration/migrate_by_endoffsets.py</span><span class="fd">方案B CLI · endOffsets 快照(冻结窗口)</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/offset_migration/core.py"><span class="fp">offset_migration/core.py</span><span class="fd">核心翻译逻辑 translate_timestamp / translate_endoffsets(纯逻辑,可单测)</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/offset_migration/kafka_adapter.py"><span class="fp">offset_migration/kafka_adapter.py</span><span class="fd">kafka-python 适配器 · offsetsForTimes / endOffsets / record_ts_at</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/offset_migration/offsetdb.py"><span class="fp">offset_migration/offsetdb.py</span><span class="fd">SQLite 外部 offset 存储(上表的实现)</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/tests/test_core.py"><span class="fp">tests/test_core.py</span><span class="fd">单元测试 10 例 · 含重复时间戳跳过安全</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/harness/run_scenarios.py"><span class="fp">harness/run_scenarios.py</span><span class="fd">真机场景验证脚本 S1–S4 / S-dup</span></a></li>
+  <li><a href="https://github.com/yhyyz/msk-offset-migration/blob/main/README.md"><span class="fp">README.md</span><span class="fd">用法、DB schema、IAM 选项与验证说明</span></a></li>
+</ul>
+
+<div class="repo">
+  <span class="gh">GITHUB</span>
+  <span>完整可复现仓库:</span>
+  <a href="https://github.com/yhyyz/msk-offset-migration">github.com/yhyyz/msk-offset-migration</a>
+</div>
 
 <footer>
   MSK Standard → Express 迁移方案说明 · MirrorMaker 2 单向复制 + 外部 DB offset 切换<br>
