@@ -297,16 +297,100 @@
     .meter-row{grid-template-columns:72px 1fr auto}
     h2{margin-top:44px}
   }
+  /* ============ Section nav (TOC) ============ */
+  html{scroll-behavior:smooth}
+  #overview,#scheme-a,#principle,#scheme-b,#compare,#validation,#notes,#common-notes,#code,#mm2-deploy,#tiered{scroll-margin-top:24px}
+
+  .toc-toggle{
+    position:fixed; top:14px; left:14px; z-index:220;
+    display:inline-flex; align-items:center; gap:7px;
+    font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.03em;
+    color:var(--a-ink); background:var(--surface); border:1px solid #cfe0ff;
+    padding:8px 13px; border-radius:9px; box-shadow:var(--shadow-md); cursor:pointer;
+  }
+  .toc-toggle:hover{border-color:var(--a)}
+  .toc-backdrop{
+    position:fixed; inset:0; z-index:200; border:0;
+    background:rgba(20,28,46,.42);
+  }
+  .toc-backdrop[hidden]{display:none}
+
+  .toc{
+    position:fixed; top:0; left:0; height:100%; width:264px; z-index:210;
+    background:var(--surface); border-right:1px solid var(--line);
+    box-shadow:var(--shadow-md); padding:20px 16px;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    transform:translateX(-100%); transition:transform .26s ease;
+  }
+  .toc.open{transform:none}
+  .toc-title{
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted-2); font-weight:700; padding:2px 10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .toc ol{list-style:none; margin:10px 0 0; padding:0}
+  .toc li{margin:2px 0}
+  .toc a{
+    display:flex; align-items:baseline; gap:10px; text-decoration:none;
+    padding:8px 10px; border-radius:9px; font-size:13px; line-height:1.45;
+    color:var(--ink-2); border:1px solid transparent;
+    transition:background .14s,color .14s,border-color .14s;
+  }
+  .toc a:hover{background:var(--surface-3); color:var(--ink)}
+  .toc a .n{
+    flex:0 0 auto; font-family:var(--mono); font-size:10.5px; font-weight:700;
+    color:var(--muted-2); min-width:20px; text-align:right;
+  }
+  .toc a.active{background:var(--a-bg); color:var(--a-ink); border-color:#d3e0fb; font-weight:700}
+  .toc a.active .n{color:var(--a)}
+
+  @media (min-width:1540px){
+    .toc-toggle,.toc-backdrop{display:none !important}
+    .toc{
+      transform:none; height:auto; max-height:calc(100vh - 48px);
+      top:24px; left:max(20px, calc(50% - 764px)); width:200px;
+      border:1px solid var(--line); border-radius:14px;
+      box-shadow:var(--shadow-sm); padding:16px 12px;
+    }
+    .toc a{font-size:12.5px; padding:7px 9px}
+  }
+  @media (max-width:1539px){
+    .wrap{padding-top:64px}
+    #overview,#scheme-a,#principle,#scheme-b,#compare,#validation,#notes,#common-notes,#code,#mm2-deploy,#tiered{scroll-margin-top:70px}
+  }
+
   @media (prefers-reduced-motion:reduce){
     *{transition:none !important}
+    html{scroll-behavior:auto}
   }
 </style>
 </head>
 <body>
+
+<!-- ============ Section navigation ============ -->
+<button class="toc-toggle" aria-label="打开章节导航" aria-expanded="false" aria-controls="toc">☰ 目录</button>
+<div class="toc-backdrop" hidden></div>
+<nav class="toc" id="toc" aria-label="章节导航">
+  <div class="toc-title">章节导航</div>
+  <ol>
+    <li><a href="#overview"><span class="n">00</span>概览 · 核心矛盾</a></li>
+    <li><a href="#scheme-a"><span class="n">A</span>方案 A · timestamp 映射</a></li>
+    <li><a href="#principle"><span class="n">·</span>offset 翻译原理</a></li>
+    <li><a href="#scheme-b"><span class="n">B</span>方案 B · endOffsets 快照</a></li>
+    <li><a href="#compare"><span class="n">01</span>两方案对比</a></li>
+    <li><a href="#validation"><span class="n">02</span>实测验证</a></li>
+    <li><a href="#notes"><span class="n">03</span>注意事项与要求</a></li>
+    <li><a href="#common-notes"><span class="n">04</span>通用注意事项</a></li>
+    <li><a href="#code"><span class="n">05</span>代码与数据样例</a></li>
+    <li><a href="#mm2-deploy"><span class="n">06</span>MM2 部署与 offset 同步</a></li>
+    <li><a href="#tiered"><span class="n">TS</span>Tiered Storage 分层存储</a></li>
+  </ol>
+</nav>
+
 <div class="wrap">
 
 <!-- ============ Header ============ -->
-<header class="doc">
+<header class="doc" id="overview">
   <span class="kicker"><span class="dot"></span>消费者 offset 切换 · 迁移运行手册</span>
   <h1>MSK Standard <span class="arrow">→</span> Express 迁移<br>消费者 offset 切换的两种方案</h1>
   <p class="sub">MSK 加密配置无法满足 Replicator 要求,改用 <b>MirrorMaker 2</b>(单向 老→新)迁移;消费者的 offset 存在外部数据库,自己 <code>seek</code>。MM2 不保留 offset 值,因此 DB 里的老 offset 在新集群上无效,必须在切换时重新定位。</p>
@@ -364,7 +448,7 @@
 </div>
 
 <!-- ===================== 方案 A ===================== -->
-<h2 class="sa"><span class="hbadge">A</span>timestamp 映射脚本(生产者基本不停)</h2>
+<h2 class="sa" id="scheme-a"><span class="hbadge">A</span>timestamp 映射脚本(生产者基本不停)</h2>
 
 <div class="card a">
   <div class="applic a"><span class="ic">适用</span><span>生产者不能长时间停 / 消费者 backlog 大、不想等排空。</span></div>
@@ -447,7 +531,7 @@
 </div>
 
 <!-- ===================== offset 翻译原理 ===================== -->
-<h2>offset 翻译原理 · 两方案差异的本质</h2>
+<h2 id="principle">offset 翻译原理 · 两方案差异的本质</h2>
 
 <figure class="fig">
   <div class="legend">
@@ -489,7 +573,7 @@
 </figure>
 
 <!-- ===================== 方案 B ===================== -->
-<h2 class="sb"><span class="hbadge">B</span>endOffsets 快照(必须停生产者)</h2>
+<h2 class="sb" id="scheme-b"><span class="hbadge">B</span>endOffsets 快照(必须停生产者)</h2>
 
 <div class="card b">
   <div class="applic b"><span class="ic">适用</span><span>能接受生产者短暂停机 / backlog 小、想要最简实现、无重复消费。</span></div>
@@ -579,7 +663,7 @@
 </div>
 
 <!-- ===================== 对比 ===================== -->
-<h2>两方案对比</h2>
+<h2 id="compare">两方案对比</h2>
 <div class="table-scroll">
 <table class="cmp">
   <thead>
@@ -598,7 +682,7 @@
 </div>
 
 <!-- ===================== 实测验证结果 ===================== -->
-<h2>实测验证结果 · 真实 Amazon MSK 端到端验证</h2>
+<h2 id="validation">实测验证结果 · 真实 Amazon MSK 端到端验证</h2>
 <p>在 us-east-1 的<b>真实 Amazon MSK</b> 集群(2× <code>kafka.t3.small</code>,Kafka 3.6.0,PLAINTEXT)上,用<b>真实 MirrorMaker 2</b> 把 <code>orders</code> 复制到 <code>src.orders</code>(DefaultReplicationPolicy),端到端验证两个脚本。为让测试有意义,复制前给目标 topic 预埋 junk(p0=5、p1=3,旧时间戳),<b>强制目标 offset 与源错位</b>(<code>src.orders</code> p0 末尾=15、p1=13)——这样"直接照搬 offset"的错误实现会失败。<b>时间戳保留</b>已验证:源 <code>orders</code> p0@offset 0 的 k0 → 目标 <code>src.orders</code> p0@offset 5,时间戳完全相同。</p>
 
 <div class="callout tip">
@@ -627,7 +711,7 @@
 </div>
 
 <!-- ===================== 注意事项与要求 ===================== -->
-<h2>注意事项与要求</h2>
+<h2 id="notes">注意事项与要求</h2>
 <ul class="k">
   <li class="hl"><b>目标 topic 必须是 <code>CreateTime</code>(不能 <code>LogAppendTime</code>)</b>:否则目标 broker 会用"复制时刻"覆盖 MM2 带来的原始时间戳,方案 A 的时间戳锚点失效。源 topic 哪种都行(只决定时间戳的含义/单调性);MSK/Kafka 默认即 CreateTime。</li>
   <li><b>消费者必须按业务主键幂等去重</b>:方案 A 在边界会重处理"最后处理那条 / 同时间戳那一组",靠去重兜底(本就是 at-least-once 语义)。</li>
@@ -640,7 +724,7 @@
 </ul>
 
 <!-- ===================== 通用注意 ===================== -->
-<h2>两方案通用的注意事项</h2>
+<h2 id="common-notes">两方案通用的注意事项</h2>
 <ul class="k">
   <li><b>按 topic / 业务分批切</b>,每个 topic 独立做一次小型 cutover,风险隔离、窗口短。<b>切勿</b>把同一个 topic 的生产者拆成"一部分写老、一部分写新"——MM2 单向复制会导致新集群乱序。</li>
   <li><b>MM2 用 <code>IdentityReplicationPolicy</code></b>,让复制后的 topic 在新集群<b>同名</b>,迁移对生产者/消费者透明。</li>
@@ -651,7 +735,7 @@
 </ul>
 
 <!-- ===================== 代码与数据样例 ===================== -->
-<h2>代码与数据样例 · 仓库源码</h2>
+<h2 id="code">代码与数据样例 · 仓库源码</h2>
 
 <h3><span class="tick">数据</span>OffsetDB 存储样例(SQLite · 每分区一行)</h3>
 <p>消费者把「下一条要读的 offset(<code>committed_offset</code>)」+「最后处理那条消息的时间戳(<code>last_msg_ts</code>)」存进外部 DB,并用 <code>cluster_id</code> 区分新老集群。迁移脚本<b>只新增「新集群」的行(老行保留,可回滚)</b>,消费者代码不动。下面是 schema 与样例(offset 值取自实测 S1/S2):</p>
@@ -708,11 +792,245 @@ for rec in consumer:
   <a href="https://github.com/yhyyz/msk-offset-migration">github.com/yhyyz/msk-offset-migration</a>
 </div>
 
+<!-- ===================== MM2 部署建议与 offset 同步 ===================== -->
+<h2 id="mm2-deploy">MM2 部署建议与 consumer group offset 同步</h2>
+<p>前面两个方案针对"offset 存在<b>外部数据库</b>"的 topic。但实际迁移里常有<b>另一类 topic</b>:用 Kafka <b>原生 consumer group</b>(offset 存在 <code>__consumer_offsets</code>,消费者不自己存 DB)。这类 topic <b>不用脚本</b>——直接让 MM2 把消费组 offset 同步到新集群即可。本节汇总 MM2 部署的关键建议 + 原生 offset 同步的开法。</p>
+
+<h3><span class="tick">版本</span>别钉 2.8.1,用 MM2 ≥3.5</h3>
+<p>很多 MM2 资料把版本钉在 Kafka 2.8.1,这会同时埋三个雷,且都已在新版本修好:</p>
+<ul class="k">
+  <li><b>offset 同步 bug:</b>2.8.1 的 <code>OffsetSyncStore</code> 只存最新一条 sync,<b>翻译不了"落后于复制进度"的消费组</b> → consumer 有 lag 时同步不过去。相关修复全在 <b>3.3.3 / 3.4.1 / 3.5.0</b>(KAFKA-14666 等)。</li>
+  <li><b>没有 Exactly-Once:</b>MM2 默认 <b>at-least-once</b>;EOS 要 Connect ≥3.3 + dedicated MM2 ≥3.5(KIP-710),且要显式开 <code>exactly.once.source.support=enabled</code>。2.8.1 根本没这条路。</li>
+  <li><b>多节点扩展 bug:</b>dedicated 模式多节点要 KIP-710(<b>3.5.0</b>)才可靠;2.8.1 多实例会丢配置 / 复制异常。</li>
+</ul>
+<div class="callout note">
+  <span class="ct">结论</span>
+  <b>用现代 MM2(≥3.5,建议最新 3.x),与源 broker 版本无关</b>——一次解决 offset 同步、EOS、多节点扩展三件事。
+</div>
+
+<h3><span class="tick">offset</span>consumer group offset 同步(原生消费组的 topic)</h3>
+<p>对于用原生 consumer group 的 topic,让 MM2 直接把消费组 offset 翻译并同步到新集群:消费者换 <code>bootstrap.servers</code>、<code>group.id</code> 不变,就从同步过来的位点续上。<b>必须显式开两个开关(默认是关的):</b></p>
+<pre class="code"><span class="cm"># MirrorCheckpointConnector:把源消费组 offset 翻译后写入新集群 __consumer_offsets</span>
+emit.checkpoints.enabled=true            <span class="cm"># 默认 true</span>
+sync.group.offsets.enabled=true          <span class="cm"># 默认 false,必须手动开</span>
+sync.group.offsets.interval.seconds=5    <span class="cm"># 同步周期</span>
+refresh.groups.enabled=true              <span class="cm"># 尽快发现新消费组</span>
+refresh.groups.interval.seconds=5</pre>
+<ul class="k">
+  <li><b>前提:</b>MM2 ≥3.5 + <code>IdentityReplicationPolicy</code>(topic 同名,否则消费者得订阅 <code>source.topic</code>)。</li>
+  <li><b>不用 drain 消费者:</b>offset 同步把位点(含 backlog)带到新集群,消费者过去接着处理 backlog。</li>
+  <li><b>会有少量重复:</b>offset 翻译是保守(向下取整)的 → cutover 时重处理边界几条 → 消费者必须<b>按业务主键幂等去重</b>(at-least-once 语义)。</li>
+  <li class="hl"><b>cutover 前必须验证:</b>在新集群 <code>kafka-consumer-groups --describe --group &lt;g&gt;</code> 确认 offset 已同步且正确。否则消费者 <code>auto.offset.reset=earliest</code> 会从头重读、<code>latest</code> 会跳过 backlog(<b>丢数据</b>)。</li>
+</ul>
+<div class="callout warn">
+  <span class="ct">混合场景:按 topic 选方式</span>
+  一次迁移里两类 topic 常并存——<b>外部 DB offset</b> 的用前面的脚本(方案 A / B);<b>原生 consumer group</b> 的开 MM2 <code>sync.group.offsets.enabled</code> 同步。逐 topic 选对应方式即可。
+</div>
+
+<h3><span class="tick">形态</span>部署形态:单机 / 容器 / 分布式</h3>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>部署形态</th><th>扩展性</th><th>适合</th></tr></thead>
+  <tbody>
+    <tr><th>单机 dedicated</th><td>单机封顶,不易横向扩</td><td>一次性、小规模迁移,最省事</td></tr>
+    <tr><th>Docker Compose(单宿主)</th><td>受限于一台机</td><td>可复现、易起停;PoC / 固定单节点</td></tr>
+    <tr><th>分布式 Connect(ECS Fargate / EKS)</th><td>加 worker 线性扩;有 REST API、自愈、autoscale</td><td><b>生产推荐;要方便扩展选这个</b></td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout note">
+  <span class="ct">官方推荐 distributed 模式</span>
+  Red Hat / Apache 都把 <b>distributed 模式(Kafka Connect 集群)</b>作为生产推荐架构,dedicated 模式不建议用于生产(无 REST API、易误配)。AWS 现成参考实现:<b>aws-samples/mirrormaker2-msk-migration</b>(Docker on ECS Fargate + Terraform + 监控 + autoscaling)。要"方便扩展" → 容器 + 分布式 Connect on ECS Fargate,加 Fargate worker 扩吞吐。
+</div>
+
+<h3><span class="tick">清单</span>部署关键配置与注意事项</h3>
+<ul class="k">
+  <li class="hl"><b>内部 topic 复制因子:</b>MM2 示例常设 RF=1,但 MSK 默认 <code>min.insync.replicas=2</code> → 内部 topic 写不进。把 <code>checkpoints / heartbeats / offset-syncs.topic.replication.factor</code> 与 <code>offset / status / config.storage.replication.factor</code> 设为 <b>-1(用集群默认)或 ≥2</b>。</li>
+  <li><b><code>IdentityReplicationPolicy</code>:</b>目标 topic 同名,迁移对生产 / 消费透明。</li>
+  <li><b>at-least-once → 幂等:</b>MM2 重启可能产生重复,消费者必须幂等去重;要 EOS 需 ≥3.5 + 显式开 <code>exactly.once.source.support</code>。</li>
+  <li><b><code>tasks.max</code></b> = min(tasks.max, 分区数),超过分区数无效;吞吐还看 <code>max.poll.records</code> / <code>fetch.max.bytes</code> / <code>batch.size</code> / <code>compression</code>。</li>
+  <li><b>关闭自动建 topic:</b><code>source.consumer.allow.auto.create.topics=false</code>,避免删 topic 时被 consumer 自动重建。</li>
+  <li><b>切完的 topic 从 MM2 复制列表移除</b>,只继续复制未迁移的,避免重复 / 回环。</li>
+  <li><b>监控:</b>JMX → Prometheus → Grafana,看 <b>replication latency / consumer lag / record age</b>,判断是否追平、能否 cutover。</li>
+  <li><b>cutover 顺序:</b>先停生产者 → 等 MM2 排空 + offset 同步落地 → 在新集群验证 offset → 切消费者 → 切生产者 → 停 MM2。</li>
+</ul>
+
+<!-- ===================== 附:Tiered Storage(分层存储) ===================== -->
+<h2 id="tiered">附 · MSK Tiered Storage(分层存储):应对存储增长的原地方案</h2>
+<p>当集群存储已经很大、且主要是<b>冷数据</b>撑起来的,Tiered Storage 是对现有 MSK 3.8 集群的<b>原地改造</b>——无需新建集群、无需迁移、不触碰加密配置,就能把冷数据从昂贵的 EBS 自动移到低成本托管层(S3 背书)。相比迁移到 Express broker(必须新建集群 + 数据迁移),这是"纯存储问题"的低风险解。</p>
+
+<h3><span class="tick">选型</span>Tiered Storage vs 迁移到 Express</h3>
+<div class="table-scroll">
+<table class="cmp">
+  <thead><tr><th>维度</th><th>Tiered Storage</th><th>迁移到 Express</th></tr></thead>
+  <tbody>
+    <tr><th>是否要迁移</th><td class="ok"><span class="verdict"><span class="vi">✓</span>原地启用,无迁移</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>必须新建集群 + 迁数据</span></td></tr>
+    <tr><th>加密前提</th><td class="ok"><span class="verdict"><span class="vi">✓</span>不要求(见下)</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>本案 Replicator 被加密堵死 → 只能 MM2</span></td></tr>
+    <tr><th>解决什么</th><td>存储成本 / 容量(长 retention 便宜留)</td><td>存储 + 吞吐 3x + 扩容 20x + 免运维</td></tr>
+    <tr><th>实例 / 拓扑</th><td>现有即可(非 t3.small)</td><td>仅 m7g + 3-AZ + 特定规格</td></tr>
+    <tr><th>风险 / 工作量</th><td class="ok"><span class="verdict"><span class="vi">✓</span>低(改配置)</span></td><td class="no"><span class="verdict"><span class="vi">✕</span>高(MM2 迁移 + cutover + 去重)</span></td></tr>
+    <tr><th>适用</th><td>痛点就是"存储大 / 贵"</td><td>还要吞吐与运维升级,且接受一次迁移</td></tr>
+  </tbody>
+</table>
+</div>
+<p><b>纯存储问题 → Tiered Storage;要 Express 的吞吐 / 运维红利且接受迁移 → Express。</b></p>
+
+<div class="callout note">
+  <span class="ct">关键:Tiered Storage 不要求开 broker 间加密</span>
+  存储模式(<code>StorageMode=TIERED</code>)与传输加密(<code>EncryptionInTransit{InCluster, ClientBroker}</code>)是<b>两套独立设置</b>,互不相关。本案集群"broker 间加密关闭且不可改"堵死了 MSK Replicator(Replicator 要 IAM → 强制 broker 间加密=开),但<b>堵不住 Tiered Storage</b>——PLAINTEXT 集群照样能原地启用。冷层数据由 MSK 用 KMS <b>默认强制静态加密(at-rest)</b>,与 <code>InCluster</code> 开关无关;且数据走 VPC 内部、不经公网。
+</div>
+
+<h3><span class="tick">原理</span>数据流转 · 三个独立时间点</h3>
+<p>数据进入分层存储有三个<b>互相独立</b>的触发点,别混在一起:</p>
+<ul class="k">
+  <li><b>① 复制到冷:</b>段(segment)一关闭就<b>立即上传</b>,由 <code>segment.bytes</code> / <code>segment.ms</code> 决定,<b>与 retention 无关</b>(可能在写入后几分钟~几小时)。active 段不上传。</li>
+  <li><b>② 从 EBS 删除:</b>数据达到 <code>local.retention.ms/bytes</code>(且已确认在冷里)→ 删本地副本,冷里仍在。</li>
+  <li><b>③ 彻底删除:</b>数据达到 <code>retention.ms/bytes</code>(总保留)→ 连冷一起删。</li>
+</ul>
+<p>关键:<b>上传(早,段一关)≠ 删 EBS(晚,到 local.retention)</b>;两者之间数据在 EBS 与冷各一份。Kafka 绝不会在"确认进冷"之前删本地副本 → <b>不丢数据</b>。</p>
+
+<figure class="fig">
+  <div class="legend">
+    <span><i class="sw" style="background:var(--green)"></i>写入 / EBS 副本</span>
+    <span><i class="sw" style="background:var(--purple)"></i>上传 / 冷层副本</span>
+    <span><i class="sw" style="background:var(--red)"></i>删除点</span>
+  </div>
+  <svg viewBox="0 0 960 250" role="img" aria-label="Tiered Storage 数据生命周期时间线">
+    <!-- time axis -->
+    <line x1="120" y1="42" x2="916" y2="42" stroke="#c2cadd" stroke-width="1.4"/>
+    <polygon points="916,37.5 930,42 916,46.5" fill="#c2cadd"/>
+    <text x="892" y="33" font-size="12" fill="#828ca0" font-family="ui-monospace,Menlo,Consolas,monospace">时间 →</text>
+
+    <!-- milestone guides -->
+    <line x1="150" y1="50" x2="150" y2="206" stroke="#0f8a52" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <line x1="332" y1="50" x2="332" y2="206" stroke="#6b3fcc" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <line x1="624" y1="50" x2="624" y2="206" stroke="#d2403a" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <line x1="864" y1="50" x2="864" y2="206" stroke="#d2403a" stroke-width="1.3" stroke-dasharray="4 3"/>
+
+    <!-- milestone labels -->
+    <text x="150" y="66" font-size="11.5" fill="#0f8a52" text-anchor="middle" font-weight="700">写入</text>
+    <text x="332" y="66" font-size="11.5" fill="#6b3fcc" text-anchor="middle" font-weight="700">段关闭 → 上传冷</text>
+    <text x="624" y="66" font-size="11.5" fill="#d2403a" text-anchor="middle" font-weight="700">local.retention</text>
+    <text x="864" y="66" font-size="11.5" fill="#d2403a" text-anchor="middle" font-weight="700">retention</text>
+
+    <!-- overlap box (both copies coexist) -->
+    <rect x="332" y="86" width="292" height="106" rx="6" fill="#f2f5fa" stroke="#c2cadd" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="478" y="150" font-size="10.5" fill="#5b6678" text-anchor="middle">重叠:两份并存</text>
+
+    <!-- EBS band -->
+    <text x="24" y="116" font-size="13" fill="#39414f" font-weight="700">EBS</text>
+    <rect x="150" y="98" width="474" height="34" rx="8" fill="#e3f4ea" stroke="#0f8a52" stroke-width="1.3"/>
+    <text x="387" y="120" font-size="12.5" fill="#0f8a52" text-anchor="middle" font-weight="700">EBS 存在:写入 → local.retention</text>
+
+    <!-- Cold band -->
+    <text x="24" y="174" font-size="13" fill="#39414f" font-weight="700">冷层</text>
+    <rect x="332" y="156" width="532" height="34" rx="8" fill="#ece3fb" stroke="#6b3fcc" stroke-width="1.3"/>
+    <text x="598" y="178" font-size="12.5" fill="#6b3fcc" text-anchor="middle" font-weight="700">冷层存在:段关闭上传 → retention</text>
+
+    <!-- bottom note -->
+    <line x1="150" y1="222" x2="864" y2="222" stroke="#e3e7f0" stroke-width="1" stroke-dasharray="3 3"/>
+    <text x="150" y="240" font-size="11.5" fill="#5b6678">上传发生在「段关闭」(早) · 删 EBS 发生在「local.retention」(晚) · 冷层一直留到「retention」</text>
+  </svg>
+  <figcaption>图 4 · 段关闭即上传到冷;EBS 副本到 local.retention 才删,总数据到 retention 才彻底消失</figcaption>
+</figure>
+
+<h3><span class="tick">配置</span>两层开关(集群级 + 每个 topic)</h3>
+<p>集群级开一次(只是"开能力"),然后<b>每个要分层的 topic 必须单独开</b>——开了集群 <code>TIERED</code> 不会自动分层任何 topic。</p>
+<pre class="code"><span class="cm"># ① 集群级(现有集群,一次性;3.8 满足版本要求)</span>
+aws kafka update-storage --cluster-arn &lt;arn&gt; \
+  --current-version &lt;v&gt; --storage-mode TIERED
+
+<span class="cm"># ② 每个要分层的 topic 单独配(remote.storage.enable + 短 local.retention)</span>
+bin/kafka-configs.sh --bootstrap-server $bs --alter \
+  --entity-type topics --entity-name &lt;topic&gt; \
+  --add-config <span class="st">'remote.storage.enable=true, local.retention.ms=259200000, retention.ms=604800000'</span>
+<span class="cm">#                ↑ 本地 3 天(短)         ↑ 总 7 天</span></pre>
+<div class="callout warn">
+  <span class="ct">必须设短 local.retention,否则不省钱</span>
+  <code>local.retention.ms/bytes</code> 默认 = <b>-2</b>(= 跟随总 retention,而 <code>retention.bytes</code> 默认 -1 无限)→ 数据全程在 EBS 也留一份,<b>EBS 完全不省</b>。要降 EBS 必须显式设一个短的 <code>local.retention.ms</code> 或有限的 <code>local.retention.bytes</code>(约束:必须 <b>&lt; retention</b>)。
+</div>
+
+<h3><span class="tick">计费</span>存储与计费(us-east-1)</h3>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>计费维度</th><th>计费方式</th><th>us-east-1 费率*</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><th>Broker 实例</th><td>按小时</td><td>不变</td><td>开 TS 不变</td></tr>
+    <tr><th>主存储 EBS</th><td>按预置 GB-月</td><td><code>$0.10 / GB-月</code></td><td>按 provision 付,且 RF× 物理副本</td></tr>
+    <tr><th>冷存储层</th><td>按实际 GB-月</td><td><code>$0.060 / GB-月</code></td><td>按用量、免预置;<b>1× 逻辑量(不乘 RF)</b></td></tr>
+    <tr><th>冷层取回</th><td>按读出 GB</td><td><code>$0.0015 / GB</code></td><td>仅读冷数据时收</td></tr>
+  </tbody>
+</table>
+</div>
+<p><small style="color:var(--muted)">*费率取自 AWS 官方定价示例(us-east-1),会变 / 分区域,正式以实时 pricing 表为准。</small></p>
+<p>冷层单价只比 EBS 低约 40%,真正省钱靠两点:(1) 冷层按 <b>1 份逻辑量</b>计费,而 EBS 按 <b>RF×(如 3 份)物理副本</b>计费;(2) <code>local.retention</code> 设短后 <b>EBS 只扛热窗口</b>。</p>
+<div class="callout note">
+  <span class="ct">冷层存量 = 总保留量,与热保留天数无关</span>
+  因为段一关就上传、留到总 retention 才删,所以<b>冷层始终装着整个 retention 窗口的全部数据</b>(例如保留 7 天、每天 1TB ⇒ 冷层 ≈ 7TB),无论 <code>local.retention</code> 设 1 天还是 6 天都一样;<code>local.retention</code> 只决定 EBS 上额外再存几天的副本。想让冷层变小,只能调小 <code>retention</code>(总保留)。
+</div>
+<div class="callout tip">
+  <span class="ct">成本示例(官方,省约 66%)</span>
+  15 MB/s、RF=3、保留 7 天 —— 不用 TS:6× m5.large + <b>32.4 TB EBS</b> ≈ <b>$4,755/月</b>;用 TS(本地 4 小时、总 7 天):3× m5.large + <b>0.8 TB EBS + 9 TB 冷层</b> ≈ <b>$1,584/月</b>,<b>省约 66%</b>(把全部历史读一遍,取回费仅 +$13)。
+</div>
+
+<h3><span class="tick">延迟</span>冷读延迟</h3>
+<p>读冷数据由 broker <b>直接从冷层取出</b>、发给消费者,<b>不会回迁到 EBS</b>。延迟特征是"首字节慢一下、之后接近本地":</p>
+<ul class="k">
+  <li><b>首字节(开始读冷):</b>延迟升高(S3-GET 级,经验几十~一两百 ms,非官方 SLA)。</li>
+  <li><b>之后顺序读:</b>broker 预取,延迟 / 吞吐回落到<b>接近本地 EBS</b>。</li>
+</ul>
+<p>所以<b>顺序读一天的冷数据 ≠ 全程高延迟</b>——只有 warmup 慢,之后流式拉满速;批量回放 / 补数完全可接受。真正会持续感到延迟的是:大量<b>随机冷 seek</b>、多消费者各自从老 offset <b>冷启动</b>、或延迟敏感的实时消费<b>追到了冷段</b>。取回成本在正常消费下可忽略,只有<b>频繁全量 replay</b> 才需把 retrieval 费算进去。</p>
+
+<h3><span class="tick">约束</span>要求与注意事项</h3>
+<ul class="k">
+  <li class="hl"><b>集群版本 ≥3.6.0</b>(或 2.8.2.tiered),<b>3.8 满足</b>;仅 <b>Provisioned 模式</b>。</li>
+  <li><b>不支持 <code>kafka.t3.small</code></b> —— 上线前确认 prod 实例类型。</li>
+  <li class="hl"><b>不支持 compacted topic</b>:启用集群级 TS 要求 <code>cleanup.policy=delete</code>;compacted topic(changelog / KTable)不能开 TS,可按 topic 跳过。</li>
+  <li><b>远端层最少保留 3 天</b>;<code>retention.ms</code> 必填且 ≥3 天;<code>local.retention</code> 必须 <b>&lt; retention</b>。</li>
+  <li><b>段最小 48 MiB / 滚动最小 10 分钟</b>;<b>低吞吐 topic 务必调小 <code>segment.ms</code></b>,否则 active 段长期不关闭 → 数据迟迟不进冷、不下 EBS,分层形同没生效。</li>
+  <li><b>只能按 topic 关、不能整集群关</b>;某 topic 一旦关闭 TS <b>不能再开</b>(粘性决定)。</li>
+  <li>不支持 GovCloud / 中国区。</li>
+  <li>per-topic 配置也是优点:可只对大 / 冷 topic 开,<b>选择性分层</b>。</li>
+</ul>
+
 <footer>
   MSK Standard → Express 迁移方案说明 · MirrorMaker 2 单向复制 + 外部 DB offset 切换<br>
   脚本 migrate_by_timestamp.py / migrate_by_endoffsets.py · 真实 Amazon MSK 验证(单元 10/10 · 真机 11/11)
 </footer>
 
 </div>
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'));
+  var sections = links.map(function(a){ return document.getElementById(a.getAttribute('href').slice(1)); }).filter(Boolean);
+  function setActive(id){
+    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+  }
+  function spy(){
+    var line = window.scrollY + 130;
+    var cur = sections.length ? sections[0].id : null;
+    for(var i=0;i<sections.length;i++){
+      if(sections[i].offsetTop <= line) cur = sections[i].id; else break;
+    }
+    if(cur) setActive(cur);
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if(!ticking){ ticking = true; window.requestAnimationFrame(function(){ spy(); ticking = false; }); }
+  }, {passive:true});
+  window.addEventListener('resize', spy, {passive:true});
+  spy();
+
+  var toc = document.getElementById('toc');
+  var toggle = document.querySelector('.toc-toggle');
+  var backdrop = document.querySelector('.toc-backdrop');
+  function close(){ toc.classList.remove('open'); if(backdrop) backdrop.hidden = true; if(toggle) toggle.setAttribute('aria-expanded','false'); }
+  function open(){ toc.classList.add('open'); if(backdrop) backdrop.hidden = false; if(toggle) toggle.setAttribute('aria-expanded','true'); }
+  if(toggle) toggle.addEventListener('click', function(){ toc.classList.contains('open') ? close() : open(); });
+  if(backdrop) backdrop.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+  links.forEach(function(a){ a.addEventListener('click', close); });
+})();
+</script>
 </body>
 </html>

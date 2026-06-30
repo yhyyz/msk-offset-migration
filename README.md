@@ -3,6 +3,9 @@
 Two production-ready scripts to re-map **externally-stored consumer offsets** when migrating
 Kafka workloads from an OLD cluster to a NEW cluster with **MirrorMaker 2** (one-way old→new).
 
+> **Visual plan & deep-dive (Chinese, with diagrams):** https://dxs9dnjebzm6y.cloudfront.net/tmp/msk-migration-plan-v6.html
+> — the two offset-cutover schemes, MM2 deployment guidance (incl. `sync.group.offsets`), and MSK Tiered Storage.
+
 ## The problem this solves
 
 The customer's consumers store their committed position **per partition in an external database**
